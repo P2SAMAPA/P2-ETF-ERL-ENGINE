@@ -220,7 +220,7 @@ def main():
 
     # ── 1. Load prices ────────────────────────────────────────────────────────
     print("\n[score] Loading prices...")
-    data = load_all(force_download=True)
+    data = load_all()
 
     # ── 2. Load signal history ────────────────────────────────────────────────
     print("\n[score] Loading signal history...")
