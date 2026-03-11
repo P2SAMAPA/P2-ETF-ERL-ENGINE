@@ -140,7 +140,7 @@ def main():
     print(f"\n[predict] Generating signal for {today_str}")
 
     # 1. Prices
-    data = load_all(force_download=True)
+    data = load_all()
 
     # 2. HMM regime
     det_path = _hf_download("models/regime_detector.pkl", cfg.HF_MODELS_REPO)
