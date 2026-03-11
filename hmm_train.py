@@ -30,7 +30,7 @@ warnings.filterwarnings('ignore')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as cfg
 from loader import load_all
-from features import compute_hmm_features, FeatureScaler
+from features import compute_hmm_features, load_or_compute_hmm_features, FeatureScaler
 
 
 # ── HuggingFace Push ───────────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ def main():
 
     # ── 2. Compute HMM features ───────────────────────────────────────────────
     print("\n[HMM] Computing macro features...")
-    hmm_feats = compute_hmm_features(data['prices'], data['benchmark'])
+    hmm_feats = load_or_compute_hmm_features(data)
 
     # ── 3. Scale features (fit on train, apply to all) ────────────────────────
     print("\n[HMM] Scaling features...")
