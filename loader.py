@@ -1,6 +1,12 @@
 # loader.py — Loads ETF and benchmark prices from HuggingFace
-# Reads from P2SAMAPA/p2-etf-deepwave-dl (existing live price source)
-# Returns clean, aligned DataFrames ready for feature computation
+# Source repo: P2SAMAPA/p2-etf-deepwave-dl
+#
+# Actual files in repo:
+#   data/etf_price.parquet    — ETF adjusted prices
+#   data/bench_price.parquet  — AGG benchmark prices
+#   data/etf_ret.parquet      — ETF daily returns (pre-computed)
+#   data/bench_ret.parquet    — benchmark daily returns
+#   data/macro.parquet        — macro features (used by HMM directly)
 
 import os
 import sys
@@ -12,196 +18,165 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as cfg
 
 
-def load_etf_prices(force_download: bool = True) -> pd.DataFrame:
+def _download(filename):
+    return hf_hub_download(
+        repo_id        = cfg.HF_SOURCE_REPO,
+        filename       = filename,
+        repo_type      = "dataset",
+        token          = cfg.HF_TOKEN if cfg.HF_TOKEN else None,
+        force_download = True,
+    )
+
+
+def load_etf_prices() -> pd.DataFrame:
+    path = _download("data/etf_price.parquet")
+    df   = pd.read_parquet(path)
+    df.index = pd.to_datetime(df.index)
+    df   = df.sort_index()
+
+    # Keep only our assets, in order
+    available = [a for a in cfg.ASSETS if a in df.columns]
+    missing   = [a for a in cfg.ASSETS if a not in df.columns]
+    if missing:
+        raise ValueError(f"[loader] Missing assets in source data: {missing}")
+
+    df = df[available]
+    df = df[df.index >= cfg.DATA_START].dropna(how='all')
+    print(f"[loader] ETF prices: {len(df)} days "
+          f"({df.index[0].date()} → {df.index[-1].date()})")
+    return df
+
+
+def load_benchmark_prices() -> pd.Series:
+    path = _download("data/bench_price.parquet")
+    df   = pd.read_parquet(path)
+    df.index = pd.to_datetime(df.index)
+    df   = df.sort_index()
+
+    # Handle single-column or named column
+    if cfg.BENCHMARK in df.columns:
+        series = df[cfg.BENCHMARK]
+    else:
+        series = df.iloc[:, 0]
+        series.name = cfg.BENCHMARK
+
+    series = series[series.index >= cfg.DATA_START].dropna()
+    print(f"[loader] Benchmark ({cfg.BENCHMARK}): {len(series)} days "
+          f"({series.index[0].date()} → {series.index[-1].date()})")
+    return series
+
+
+def load_etf_returns() -> pd.DataFrame:
+    """Load pre-computed ETF daily returns."""
+    path = _download("data/etf_ret.parquet")
+    df   = pd.read_parquet(path)
+    df.index = pd.to_datetime(df.index)
+    df   = df.sort_index()
+    available = [a for a in cfg.ASSETS if a in df.columns]
+    df   = df[available]
+    df   = df[df.index >= cfg.DATA_START].dropna(how='all')
+    print(f"[loader] ETF returns: {len(df)} days")
+    return df
+
+
+def load_benchmark_returns() -> pd.Series:
+    """Load pre-computed benchmark daily returns."""
+    path = _download("data/bench_ret.parquet")
+    df   = pd.read_parquet(path)
+    df.index = pd.to_datetime(df.index)
+    df   = df.sort_index()
+
+    if cfg.BENCHMARK in df.columns:
+        series = df[cfg.BENCHMARK]
+    else:
+        series = df.iloc[:, 0]
+        series.name = cfg.BENCHMARK
+
+    series = series[series.index >= cfg.DATA_START].dropna()
+    print(f"[loader] Benchmark returns: {len(series)} days")
+    return series
+
+
+def load_macro() -> pd.DataFrame:
     """
-    Load total-return adjusted ETF prices from HF source repo.
-
-    Returns
-    -------
-    pd.DataFrame
-        Index: DatetimeIndex (trading days)
-        Columns: ['TLT', 'LQD', 'HYG', 'VNQ', 'GLD', 'SLV']
-        Values: total return adjusted closing prices
+    Load pre-computed macro features from source repo.
+    Used directly by HMM — no recomputation needed.
+    Columns expected: yield_curve_slope, credit_spread, vol_regime,
+                      real_rate_direction, risk_appetite (or similar)
     """
-    try:
-        path = hf_hub_download(
-            repo_id=cfg.HF_SOURCE_REPO,
-            filename="etf_prices.csv",
-            repo_type="dataset",
-            token=cfg.HF_TOKEN if cfg.HF_TOKEN else None,
-            force_download=force_download,
-        )
-        df = pd.read_csv(path, index_col=0, parse_dates=True)
-        df.index = pd.to_datetime(df.index)
-        df = df.sort_index()
-
-        # Keep only our assets
-        available = [a for a in cfg.ASSETS if a in df.columns]
-        missing   = [a for a in cfg.ASSETS if a not in df.columns]
-        if missing:
-            raise ValueError(f"[loader] Missing assets in source data: {missing}")
-
-        df = df[available]
-
-        # Filter to data range
-        df = df[df.index >= cfg.DATA_START]
-        df = df.dropna(how='all')
-
-        print(f"[loader] ETF prices loaded: {len(df)} days "
-              f"({df.index[0].date()} → {df.index[-1].date()})")
-        return df
-
-    except Exception as e:
-        raise RuntimeError(f"[loader] Failed to load ETF prices: {e}")
+    path = _download("data/macro.parquet")
+    df   = pd.read_parquet(path)
+    df.index = pd.to_datetime(df.index)
+    df   = df.sort_index()
+    df   = df[df.index >= cfg.DATA_START].dropna(how='all')
+    print(f"[loader] Macro features: {len(df)} days, "
+          f"cols={list(df.columns)}")
+    return df
 
 
-def load_benchmark_prices(force_download: bool = True) -> pd.Series:
-    """
-    Load AGG benchmark total-return adjusted prices from HF source repo.
+def align_all(etf_prices, benchmark, etf_returns, bench_returns):
+    """Align all frames to common trading days."""
+    common = (etf_prices.index
+              .intersection(benchmark.index)
+              .intersection(etf_returns.index)
+              .intersection(bench_returns.index))
+    common = common.sort_values()
 
-    Returns
-    -------
-    pd.Series
-        Index: DatetimeIndex
-        Name: 'AGG'
-        Values: total return adjusted closing prices
-    """
-    try:
-        path = hf_hub_download(
-            repo_id=cfg.HF_SOURCE_REPO,
-            filename="benchmark_prices.csv",
-            repo_type="dataset",
-            token=cfg.HF_TOKEN if cfg.HF_TOKEN else None,
-            force_download=force_download,
-        )
-        df = pd.read_csv(path, index_col=0, parse_dates=True)
-        df.index = pd.to_datetime(df.index)
-        df = df.sort_index()
-
-        if cfg.BENCHMARK not in df.columns:
-            # Try loading it as a single-column file
-            series = df.iloc[:, 0]
-            series.name = cfg.BENCHMARK
-        else:
-            series = df[cfg.BENCHMARK]
-
-        series = series[series.index >= cfg.DATA_START]
-        series = series.dropna()
-
-        print(f"[loader] Benchmark ({cfg.BENCHMARK}) loaded: {len(series)} days "
-              f"({series.index[0].date()} → {series.index[-1].date()})")
-        return series
-
-    except Exception as e:
-        raise RuntimeError(f"[loader] Failed to load benchmark prices: {e}")
+    return (
+        etf_prices.reindex(common),
+        benchmark.reindex(common),
+        etf_returns.reindex(common),
+        bench_returns.reindex(common),
+    )
 
 
-def align_prices(
-    etf_prices: pd.DataFrame,
-    benchmark: pd.Series
-) -> tuple[pd.DataFrame, pd.Series]:
-    """
-    Align ETF prices and benchmark to the same trading days.
-    Drops any day where either has NaN.
-
-    Returns
-    -------
-    (etf_prices_aligned, benchmark_aligned)
-    """
-    combined = etf_prices.join(benchmark, how='inner')
-    combined = combined.dropna()
-
-    etf_aligned   = combined[cfg.ASSETS]
-    bench_aligned = combined[cfg.BENCHMARK]
-
-    print(f"[loader] Aligned: {len(combined)} common trading days")
-    return etf_aligned, bench_aligned
-
-
-def split_train_live(
-    df: pd.DataFrame | pd.Series,
-) -> tuple:
-    """
-    Split data into training period (up to TRAIN_END)
-    and live period (from LIVE_START onwards).
-
-    Works with both DataFrame and Series.
-    """
+def split_train_live(df):
     train = df[df.index <= cfg.TRAIN_END]
     live  = df[df.index >= cfg.LIVE_START]
-
-    if isinstance(df, pd.DataFrame):
-        print(f"[loader] Train: {len(train)} days "
-              f"({train.index[0].date()} → {train.index[-1].date()})")
-        print(f"[loader] Live:  {len(live)} days "
-              f"({live.index[0].date()} → {live.index[-1].date()})")
     return train, live
 
 
-def get_regime_slice(
-    df: pd.DataFrame | pd.Series,
-    regime_labels: pd.Series,
-    regimes: list[int],
-) -> pd.DataFrame | pd.Series:
-    """
-    Filter data to rows where HMM regime label is in the given list.
-    Used to create regime-specific training sets for Policy A/B/C.
-
-    Parameters
-    ----------
-    df            : price or feature DataFrame/Series
-    regime_labels : pd.Series with same index, values = int regime labels
-    regimes       : list of regime ints to keep (e.g. [4, 5, 6] for crisis)
-    """
-    mask = regime_labels.isin(regimes)
-    aligned_mask = mask.reindex(df.index).fillna(False)
-    filtered = df[aligned_mask]
-
-    print(f"[loader] Regime slice {regimes}: "
-          f"{len(filtered)} days ({len(filtered)/len(df)*100:.1f}% of data)")
-    return filtered
-
-
-def compute_daily_returns(prices: pd.DataFrame | pd.Series) -> pd.DataFrame | pd.Series:
-    """
-    Compute daily percentage returns from price series.
-    First row is dropped (NaN from pct_change).
-    """
-    returns = prices.pct_change().dropna()
-    return returns
+def compute_daily_returns(prices):
+    """Fallback — compute returns from prices if pre-computed not available."""
+    return prices.pct_change().dropna()
 
 
 def load_all(force_download: bool = True) -> dict:
     """
-    Convenience function — loads and aligns everything in one call.
+    Load and align everything in one call.
 
-    Returns
-    -------
-    dict with keys:
-        'prices'         : pd.DataFrame — all ETF prices, aligned
-        'benchmark'      : pd.Series   — AGG prices, aligned
-        'returns'        : pd.DataFrame — ETF daily returns
-        'bench_returns'  : pd.Series   — AGG daily returns
-        'train_prices'   : pd.DataFrame
-        'live_prices'    : pd.DataFrame
-        'train_bench'    : pd.Series
-        'live_bench'     : pd.Series
+    Returns dict with keys:
+        prices, benchmark, returns, bench_returns,
+        train_prices, live_prices, train_bench, live_bench,
+        macro (if available)
     """
-    etf_prices = load_etf_prices(force_download=force_download)
-    benchmark  = load_benchmark_prices(force_download=force_download)
+    etf_prices    = load_etf_prices()
+    benchmark     = load_benchmark_prices()
 
-    etf_prices, benchmark = align_prices(etf_prices, benchmark)
+    # Try pre-computed returns first, fall back to computing from prices
+    try:
+        etf_returns   = load_etf_returns()
+        bench_returns = load_benchmark_returns()
+    except Exception as e:
+        print(f"[loader] Pre-computed returns not found ({e}) "
+              f"— computing from prices")
+        etf_returns   = compute_daily_returns(etf_prices)
+        bench_returns = compute_daily_returns(benchmark)
 
+    # Align
+    etf_prices, benchmark, etf_returns, bench_returns = align_all(
+        etf_prices, benchmark, etf_returns, bench_returns
+    )
+    print(f"[loader] Aligned: {len(etf_prices)} common trading days")
+
+    # Train/live splits
     train_prices, live_prices = split_train_live(etf_prices)
     train_bench,  live_bench  = split_train_live(benchmark)
 
-    returns       = compute_daily_returns(etf_prices)
-    bench_returns = compute_daily_returns(benchmark)
-
-    return {
+    result = {
         'prices':        etf_prices,
         'benchmark':     benchmark,
-        'returns':       returns,
+        'returns':       etf_returns,
         'bench_returns': bench_returns,
         'train_prices':  train_prices,
         'live_prices':   live_prices,
@@ -209,20 +184,20 @@ def load_all(force_download: bool = True) -> dict:
         'live_bench':    live_bench,
     }
 
+    # Load macro if available
+    try:
+        result['macro'] = load_macro()
+    except Exception as e:
+        print(f"[loader] Macro not loaded ({e})")
+
+    return result
+
 
 if __name__ == "__main__":
-    """Quick smoke test — run directly to verify data loads correctly."""
     data = load_all()
-
-    print("\n── Data Summary ──────────────────────────────")
-    print(f"Full price range:  {data['prices'].index[0].date()} "
-          f"→ {data['prices'].index[-1].date()}")
-    print(f"Total days:        {len(data['prices'])}")
-    print(f"Train days:        {len(data['train_prices'])}")
-    print(f"Live days:         {len(data['live_prices'])}")
-    print(f"\nETF price tail:")
-    print(data['prices'].tail(3).to_string())
-    print(f"\nBenchmark tail:")
-    print(data['benchmark'].tail(3).to_string())
-    print(f"\nReturn stats (full period):")
-    print(data['returns'].describe().loc[['mean','std','min','max']].to_string())
+    print("\n── Summary ───────────────────────────────────")
+    print(f"Prices:  {data['prices'].shape}")
+    print(f"Returns: {data['returns'].shape}")
+    print(f"Train:   {len(data['train_prices'])} days")
+    print(f"Live:    {len(data['live_prices'])} days")
+    print(data['prices'].tail(3))
