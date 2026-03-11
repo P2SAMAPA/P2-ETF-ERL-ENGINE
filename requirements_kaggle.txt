@@ -1,0 +1,7 @@
+# requirements_kaggle.txt — additional installs for Kaggle notebooks
+# Kaggle already has: torch, numpy, pandas, scikit-learn, pyarrow
+# Only install what's missing:
+
+huggingface_hub>=0.20.0
+hmmlearn>=0.3.0
+google-generativeai>=0.4.0
