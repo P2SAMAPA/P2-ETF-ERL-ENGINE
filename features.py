@@ -368,3 +368,35 @@ if __name__ == "__main__":
                                dummy_weights, 0.5)
     print(f"State shape: {state.shape} (expected {cfg.DDPG_STATE_DIM})")
     print("✅ All feature tests passed")
+
+
+# ── Macro from source repo (preferred over recomputing) ────────────────────────
+
+def load_or_compute_hmm_features(data: dict) -> pd.DataFrame:
+    """
+    Use pre-computed macro.parquet if available in data dict,
+    otherwise compute from prices. Aligns column names to cfg.MACRO_FEATURES.
+    """
+    if 'macro' in data and data['macro'] is not None:
+        macro = data['macro'].copy()
+
+        # Remap column names if they differ from cfg.MACRO_FEATURES
+        # Common alternative names from p2-etf-deepwave-dl:
+        rename_map = {
+            'yield_slope':    'yield_curve_slope',
+            'credit_spd':     'credit_spread',
+            'vol_20d':        'vol_regime',
+            'tlt_mom':        'real_rate_direction',
+            'risk_app':       'risk_appetite',
+        }
+        macro = macro.rename(columns=rename_map)
+
+        # Keep only known macro features that exist
+        available = [c for c in cfg.MACRO_FEATURES if c in macro.columns]
+        if len(available) >= 3:
+            print(f"[features] Using pre-computed macro: {available}")
+            return macro[available].dropna()
+
+    # Fallback: compute from prices
+    print("[features] Computing macro features from prices...")
+    return compute_hmm_features(data['prices'], data['benchmark'])
