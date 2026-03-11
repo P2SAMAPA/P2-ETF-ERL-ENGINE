@@ -417,7 +417,7 @@ def load_training_data() -> dict:
     Downloads fresh from HF.
     """
     print("[DDPG] Loading data...")
-    data = load_all(force_download=True)
+    data = load_all()
 
     # Load TFT feature cache (pre-computed embeddings)
     print("[DDPG] Loading TFT embeddings...")
