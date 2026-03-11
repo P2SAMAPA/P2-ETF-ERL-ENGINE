@@ -418,7 +418,7 @@ def main():
 
     # ── 1. Load data ──────────────────────────────────────────────────────────
     print("\n[TFT] Loading data...")
-    data = load_all(force_download=True)
+    data = load_all()
 
     # ── 2. Load HMM regime labels ─────────────────────────────────────────────
     print("\n[TFT] Loading HMM regime labels...")
