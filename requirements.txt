@@ -1,1 +1,29 @@
+# requirements.txt — P2-ETF-ERL-ENGINE
+# Install with: pip install -r requirements.txt
 
+# ── Core ───────────────────────────────────────────────────────────────────────
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+
+# ── Machine Learning ───────────────────────────────────────────────────────────
+torch>=2.1.0
+hmmlearn>=0.3.0
+
+# ── HuggingFace ────────────────────────────────────────────────────────────────
+huggingface_hub>=0.20.0
+
+# ── Reflection / LLM ──────────────────────────────────────────────────────────
+google-generativeai>=0.4.0
+
+# ── Data Storage ──────────────────────────────────────────────────────────────
+pyarrow>=14.0.0        # parquet read/write for feature cache
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+streamlit>=1.32.0
+plotly>=5.18.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dateutil>=2.8.0
+tqdm>=4.66.0
