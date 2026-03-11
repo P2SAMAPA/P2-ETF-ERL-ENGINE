@@ -147,6 +147,10 @@ def main():
     detector = RegimeDetector.load(det_path)
     hmm_feats = load_or_compute_hmm_features(data)
     regime_output = detector.predict(hmm_feats.tail(cfg.TFT_CONTEXT_LENGTH))
+    # Debug: print full regime probs
+    print(f"[predict] HMM probs: { {k: f'{v:.3f}' for k,v in enumerate(regime_output['probs'])} }")
+    print(f"[predict] Dominant regime id: {regime_output['regime']} = {regime_output['regime_name']}")
+    print(f"[predict] POLICY_A_REGIMES (crisis): {cfg.POLICY_A_REGIMES}")
     print(f"[predict] Regime: {regime_output['regime_name']} "
           f"(id={regime_output['regime']} crisis_p={regime_output['crisis_prob']:.1%} "
           f"entropy={regime_output['transition_entropy']:.3f})")
