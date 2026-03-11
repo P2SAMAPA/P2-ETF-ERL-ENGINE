@@ -1,1 +1,53 @@
+# .github/workflows/daily_signal.yml
+# Runs daily at 22:00 UTC (after US market close + data availability lag)
+# Steps: score yesterday's signal → generate today's signal
 
+name: Daily Signal
+
+on:
+  schedule:
+    - cron: '0 22 * * 1-5'   # Mon–Fri 22:00 UTC
+  workflow_dispatch:           # manual trigger for testing
+
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Score yesterday's signal
+        env:
+          HF_TOKEN:        ${{ secrets.HF_TOKEN }}
+          HF_SOURCE_REPO:  ${{ secrets.HF_SOURCE_REPO }}
+          HF_MODELS_REPO:  ${{ secrets.HF_MODELS_REPO }}
+          HF_RESULTS_REPO: ${{ secrets.HF_RESULTS_REPO }}
+        run: python score.py
+
+      - name: Generate today's signal
+        env:
+          HF_TOKEN:        ${{ secrets.HF_TOKEN }}
+          HF_SOURCE_REPO:  ${{ secrets.HF_SOURCE_REPO }}
+          HF_MODELS_REPO:  ${{ secrets.HF_MODELS_REPO }}
+          HF_RESULTS_REPO: ${{ secrets.HF_RESULTS_REPO }}
+          GEMINI_API_KEY:  ${{ secrets.GEMINI_API_KEY }}
+        run: python predict.py
+
+      - name: Upload signal artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: signal-${{ github.run_id }}
+          path: /tmp/realm/
+          retention-days: 7
