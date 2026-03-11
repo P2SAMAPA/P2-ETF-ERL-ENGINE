@@ -33,15 +33,15 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
 
 :root {
-    --bg:       #0b0e14;
-    --surface:  #111620;
-    --border:   #1e2535;
-    --accent:   #4af0b0;
-    --accent2:  #7c6af5;
-    --warn:     #f5a623;
-    --danger:   #f55c47;
-    --text:     #d4dde8;
-    --muted:    #5a6a80;
+    --bg:       #f8f9fb;
+    --surface:  #ffffff;
+    --border:   #e2e8f0;
+    --accent:   #0ea47a;
+    --accent2:  #6c5ce7;
+    --warn:     #d97706;
+    --danger:   #dc2626;
+    --text:     #1a202c;
+    --muted:    #64748b;
     --mono:     'Space Mono', monospace;
     --sans:     'DM Sans', sans-serif;
 }
@@ -69,6 +69,7 @@ html, body, [class*="css"] {
     position: absolute; top: 0; left: 0;
     width: 3px; height: 100%;
     background: var(--accent);
+    border-radius: 3px 0 0 3px;
 }
 .metric-label {
     font-family: var(--mono);
@@ -185,8 +186,8 @@ html, body, [class*="css"] {
 
 /* Stale warning */
 .stale-banner {
-    background: rgba(245,166,35,0.1);
-    border: 1px solid rgba(245,166,35,0.3);
+    background: #fef3c7;
+    border: 1px solid #d97706;
     border-radius: 6px;
     padding: 10px 16px;
     font-size: 13px;
@@ -201,7 +202,7 @@ header    { visibility: hidden; }
 .stDeployButton { display: none; }
 .stTabs [data-baseweb="tab-list"] {
     gap: 4px;
-    background: var(--surface) !important;
+    background: #f1f5f9 !important;
     border-radius: 8px;
     padding: 4px;
     border: 1px solid var(--border);
@@ -332,15 +333,15 @@ def chart_equity_curve(history):
     ))
     fig.add_trace(go.Scatter(
         x=dates, y=b_cum, name='AGG',
-        line=dict(color='#5a6a80', width=1.5, dash='dot'),
+        line=dict(color='#64748b', width=1.5, dash='dot'),
     ))
     fig.update_layout(
-        paper_bgcolor='#0b0e14', plot_bgcolor='#0b0e14',
-        font=dict(family='Space Mono', color='#5a6a80', size=10),
+        paper_bgcolor='#f8f9fb', plot_bgcolor='#f8f9fb',
+        font=dict(family='Space Mono', color='#64748b', size=10),
         margin=dict(l=0, r=0, t=8, b=0),
         legend=dict(orientation='h', y=1.08, font=dict(size=10)),
-        xaxis=dict(gridcolor='#1e2535', tickfont=dict(size=9)),
-        yaxis=dict(gridcolor='#1e2535', tickfont=dict(size=9),
+        xaxis=dict(gridcolor='#e2e8f0', tickfont=dict(size=9)),
+        yaxis=dict(gridcolor='#e2e8f0', tickfont=dict(size=9),
                    ticksuffix='', title='Base 100'),
         height=220,
     )
@@ -357,12 +358,12 @@ def chart_excess_bars(history):
     fig = go.Figure(go.Bar(x=dates, y=excess, marker_color=colors,
                            marker_line_width=0))
     fig.update_layout(
-        paper_bgcolor='#0b0e14', plot_bgcolor='#0b0e14',
-        font=dict(family='Space Mono', color='#5a6a80', size=9),
+        paper_bgcolor='#f8f9fb', plot_bgcolor='#f8f9fb',
+        font=dict(family='Space Mono', color='#64748b', size=9),
         margin=dict(l=0, r=0, t=8, b=0),
-        xaxis=dict(gridcolor='#1e2535', tickfont=dict(size=8),
+        xaxis=dict(gridcolor='#e2e8f0', tickfont=dict(size=8),
                    tickangle=-45),
-        yaxis=dict(gridcolor='#1e2535', tickfont=dict(size=9),
+        yaxis=dict(gridcolor='#e2e8f0', tickfont=dict(size=9),
                    ticksuffix='%', title='Daily excess (%)'),
         height=180,
         showlegend=False,
@@ -383,7 +384,7 @@ def chart_regime_donut(hmm_probs):
         hovertemplate='%{label}: %{percent}<extra></extra>',
     ))
     fig.update_layout(
-        paper_bgcolor='transparent', plot_bgcolor='transparent',
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         margin=dict(l=0, r=0, t=0, b=0),
         showlegend=False,
         height=140,
@@ -414,11 +415,11 @@ def chart_regime_timeline(regime_history):
             hovertemplate=f"{cfg.REGIME_NAMES.get(k,'R'+str(k))}<br>%{{x}}<extra></extra>",
         ))
     fig.update_layout(
-        paper_bgcolor='#0b0e14', plot_bgcolor='#0b0e14',
-        font=dict(family='Space Mono', color='#5a6a80', size=9),
+        paper_bgcolor='#f8f9fb', plot_bgcolor='#f8f9fb',
+        font=dict(family='Space Mono', color='#64748b', size=9),
         margin=dict(l=0, r=0, t=8, b=0),
         height=100,
-        xaxis=dict(gridcolor='#1e2535', tickfont=dict(size=8)),
+        xaxis=dict(gridcolor='#e2e8f0', tickfont=dict(size=8)),
         yaxis=dict(visible=False),
         legend=dict(orientation='h', y=1.5, font=dict(size=8)),
         showlegend=True,
@@ -459,7 +460,7 @@ def main():
         st.markdown("""
         <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:4px">
             <span style="font-family:'Space Mono';font-size:22px;
-                         font-weight:700;color:#4af0b0;letter-spacing:0.05em">
+                         font-weight:700;color:#0ea47a;letter-spacing:0.05em">
                 REALM
             </span>
             <span style="font-family:'Space Mono';font-size:11px;
