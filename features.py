@@ -380,19 +380,19 @@ def load_or_compute_hmm_features(data: dict) -> pd.DataFrame:
     if 'macro' in data and data['macro'] is not None:
         macro = data['macro'].copy()
 
-        # Remap column names if they differ from cfg.MACRO_FEATURES
-        # Common alternative names from p2-etf-deepwave-dl:
-        rename_map = {
-            'yield_slope':    'yield_curve_slope',
-            'credit_spd':     'credit_spread',
-            'vol_20d':        'vol_regime',
-            'tlt_mom':        'real_rate_direction',
-            'risk_app':       'risk_appetite',
-        }
-        macro = macro.rename(columns=rename_map)
-
-        # Keep only known macro features that exist
-        available = [c for c in cfg.MACRO_FEATURES if c in macro.columns]
+        # Actual columns in p2-etf-deepwave-dl/data/macro.parquet:
+        # TNX, DXY, CORP_SPREAD, HY_SPREAD, VIX, T10Y2Y, TBILL_3M
+        # Use all available columns — HMM will learn from whatever is present
+        SOURCE_MACRO_COLS = [
+            'TNX',         # 10-year Treasury yield
+            'DXY',         # USD index
+            'CORP_SPREAD', # IG corporate spread
+            'HY_SPREAD',   # HY spread
+            'VIX',         # Equity vol (regime signal)
+            'T10Y2Y',      # Yield curve slope (10y - 2y)
+            'TBILL_3M',    # 3-month T-bill rate
+        ]
+        available = [c for c in SOURCE_MACRO_COLS if c in macro.columns]
         if len(available) >= 3:
             print(f"[features] Using pre-computed macro: {available}")
             return macro[available].dropna()
