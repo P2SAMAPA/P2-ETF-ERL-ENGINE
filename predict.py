@@ -148,7 +148,8 @@ def main():
     hmm_feats = load_or_compute_hmm_features(data)
     regime_output = detector.predict(hmm_feats.tail(cfg.TFT_CONTEXT_LENGTH))
     print(f"[predict] Regime: {regime_output['regime_name']} "
-          f"(crisis={regime_output['crisis_prob']:.1%})")
+          f"(id={regime_output['regime']} crisis_p={regime_output['crisis_prob']:.1%} "
+          f"entropy={regime_output['transition_entropy']:.3f})")
 
     # 3. TFT embedding
     cache_path = _hf_download(cfg.FEATURE_CACHE_PATH, cfg.HF_MODELS_REPO)
