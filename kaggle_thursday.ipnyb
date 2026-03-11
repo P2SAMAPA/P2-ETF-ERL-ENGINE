@@ -1,0 +1,105 @@
+{
+ "metadata": {
+  "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+  "language_info": {"name": "python", "version": "3.10.0"}
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5,
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": ["# REALM Thursday Training\n", "**Incremental update:** ERL loop only (picks up from latest model weights)\n\n", "**Schedule:** Thursday 02:00 UTC\n", "**GPU:** T4 x2\n", "**Est. runtime:** ~6 hours"]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import subprocess, sys\n",
+    "subprocess.run([\n",
+    "    sys.executable, '-m', 'pip', 'install', '-q',\n",
+    "    '-r', '/kaggle/working/repo/requirements_kaggle.txt'\n",
+    "], check=True)\n",
+    "print('Dependencies installed')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import subprocess, sys, os\n",
+    "repo_path = '/kaggle/working/repo'\n",
+    "if not os.path.exists(repo_path):\n",
+    "    subprocess.run([\n",
+    "        'git', 'clone',\n",
+    "        'https://github.com/P2SAMAPA/P2-ETF-ERL-ENGINE.git',\n",
+    "        repo_path\n",
+    "    ], check=True)\n",
+    "else:\n",
+    "    subprocess.run(['git', '-C', repo_path, 'pull'], check=True)\n",
+    "sys.path.insert(0, repo_path)\n",
+    "print(f'Repo ready at {repo_path}')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import os\n",
+    "from kaggle_secrets import UserSecretsClient\n",
+    "secrets = UserSecretsClient()\n",
+    "os.environ['HF_TOKEN']        = secrets.get_secret('HF_TOKEN')\n",
+    "os.environ['HF_SOURCE_REPO']  = secrets.get_secret('HF_SOURCE_REPO')\n",
+    "os.environ['HF_MODELS_REPO']  = secrets.get_secret('HF_MODELS_REPO')\n",
+    "os.environ['HF_RESULTS_REPO'] = secrets.get_secret('HF_RESULTS_REPO')\n",
+    "os.environ['GEMINI_API_KEY']  = secrets.get_secret('GEMINI_API_KEY')\n",
+    "print('Secrets loaded')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "os.chdir(repo_path)\n",
+    "import config as cfg\n",
+    "cfg.validate()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Thursday: ERL only — loads existing DDPG weights from HF,\n",
+    "# runs more episodes, updates rulebook and policies\n",
+    "from erl_train import main as erl_main\n",
+    "erl_main()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import json, os\n",
+    "for fname in ['erl_summary.json', 'sft_summary.json']:\n",
+    "    path = os.path.join(cfg.LOCAL_TMP, fname)\n",
+    "    if os.path.exists(path):\n",
+    "        with open(path) as f:\n",
+    "            print(f'\\n── {fname} ──')\n",
+    "            print(json.dumps(json.load(f), indent=2))\n",
+    "print('\\nThursday training complete')"
+   ]
+  }
+ ]
+}
