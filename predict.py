@@ -14,7 +14,7 @@ from huggingface_hub import HfApi, hf_hub_download
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as cfg
 from loader import load_all
-from features import compute_hmm_features, current_sharpe
+from features import compute_hmm_features, load_or_compute_hmm_features, current_sharpe
 from hmm_train import RegimeDetector
 from ensemble import EnsemblePolicy
 from memory import Rulebook
@@ -145,7 +145,7 @@ def main():
     # 2. HMM regime
     det_path = _hf_download("models/regime_detector.pkl", cfg.HF_MODELS_REPO)
     detector = RegimeDetector.load(det_path)
-    hmm_feats = compute_hmm_features(data['prices'], data['benchmark'])
+    hmm_feats = load_or_compute_hmm_features(data)
     regime_output = detector.predict(hmm_feats.tail(cfg.TFT_CONTEXT_LENGTH))
     print(f"[predict] Regime: {regime_output['regime_name']} "
           f"(crisis={regime_output['crisis_prob']:.1%})")
