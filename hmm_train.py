@@ -416,7 +416,7 @@ def main():
 
     # ── 1. Load data ──────────────────────────────────────────────────────────
     print("\n[HMM] Loading data...")
-    data = load_all(force_download=True)
+    data = load_all()
 
     # ── 2. Compute HMM features ───────────────────────────────────────────────
     print("\n[HMM] Computing macro features...")
