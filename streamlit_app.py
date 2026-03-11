@@ -218,7 +218,7 @@ def vcolor(v, good_positive=True):
 def chart_equity(history):
     scored = [s for s in history if s.get('scored')]
     if len(scored)<2: return None
-    dates = pd.to_datetime([s['date'] for s in scored])
+    dates = [s['date'][:10] for s in scored]  # Take only YYYY-MM-DD
     pc = (1+np.array([s['portfolio_return'] for s in scored])).cumprod()*100
     bc = (1+np.array([s['benchmark_return'] for s in scored])).cumprod()*100
     fig = go.Figure()
@@ -238,7 +238,7 @@ def chart_equity(history):
 def chart_excess(history):
     scored = [s for s in history if s.get('scored')][-30:]
     if not scored: return None
-    dates = [s['date'][-5:] for s in scored]
+    dates = [s['date'][:10] for s in scored]
     vals  = [s['excess_return']*100 for s in scored]
     colors = ['#15803d' if v>=0 else '#b91c1c' for v in vals]
     fig = go.Figure(go.Bar(x=dates,y=vals,marker_color=colors,marker_line_width=0))
