@@ -40,15 +40,22 @@ def agreement_scalar(
     Perfect agreement → scalar = 1.0
     Random disagreement → scalar ≈ 0.5
     """
+    # Guard against zero/NaN actions
+    def safe_norm(a):
+        n = np.linalg.norm(a)
+        return n if n > 1e-8 else 1.0
+
     def cosine_sim(a, b):
-        return float(
-            np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8)
-        )
+        if np.isnan(a).any() or np.isnan(b).any():
+            return 0.5
+        return float(np.dot(a, b) / (safe_norm(a) * safe_norm(b)))
 
     sim_AB = cosine_sim(action_A, action_B)
     sim_AC = cosine_sim(action_A, action_C)
     sim_BC = cosine_sim(action_B, action_C)
-    mean_sim = (sim_AB + sim_AC + sim_BC) / 3.0
+    mean_sim = np.nanmean([sim_AB, sim_AC, sim_BC])
+    if np.isnan(mean_sim):
+        mean_sim = 0.5
 
     # Map from [-1, 1] cosine similarity to [0.5, 1.0] scalar
     scalar = 0.5 + 0.5 * mean_sim
