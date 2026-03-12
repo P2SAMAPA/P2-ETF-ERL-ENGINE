@@ -172,8 +172,8 @@ def characterise_regimes(
 
 def auto_name_regimes(characteristics: dict) -> dict:
     """
-    Attempt to auto-assign regime names based on characteristic values.
-    Uses heuristics based on yield curve slope and vol regime.
+    Assign regime names based on actual macro feature means.
+    Features: TNX, DXY, CORP_SPREAD, HY_SPREAD, VIX, T10Y2Y, TBILL_3M
 
     Returns
     -------
@@ -181,30 +181,33 @@ def auto_name_regimes(characteristics: dict) -> dict:
     """
     names = {}
     for k, feats in characteristics.items():
-        slope   = feats.get('yield_curve_slope', 0)
-        credit  = feats.get('credit_spread', 0)
-        vol     = feats.get('vol_regime', 0)
-        real_r  = feats.get('real_rate_direction', 0)
-        risk    = feats.get('risk_appetite', 0)
+        # Use actual feature names from macro.parquet
+        vix         = feats.get('VIX', 0)
+        hy_spread   = feats.get('HY_SPREAD', 0)
+        corp_spread = feats.get('CORP_SPREAD', 0)
+        t10y2y      = feats.get('T10Y2Y', 0)   # yield curve slope (10Y - 2Y)
+        tnx         = feats.get('TNX', 0)       # 10Y yield level
 
-        # Simple heuristic rules
-        if vol > 0.015:
-            if credit > 0:
+        # Heuristic rules using actual feature names
+        if vix > 30:
+            if hy_spread > 8:
                 name = 'Acute Crisis'
             else:
                 name = 'Risk Off'
-        elif credit > 0.002:
+        elif hy_spread > 6:
             name = 'Credit Stress'
-        elif slope < -0.001:
-            name = 'Curve Flattening'
-        elif real_r < -0.001:
+        elif vix > 20:
             name = 'Late Cycle'
-        elif risk > 0.002:
+        elif t10y2y < 0:
+            name = 'Curve Flattening'
+        elif t10y2y > 1.5 and vix < 15:
             name = 'Mid Cycle Growth'
-        elif vol < 0.005:
+        elif vix < 15 and hy_spread < 4:
             name = 'Low Vol Expansion'
-        else:
+        elif hy_spread < 5 and t10y2y > 0:
             name = 'Recovery'
+        else:
+            name = 'Mid Cycle Growth'
 
         names[k] = name
 
