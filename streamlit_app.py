@@ -348,29 +348,26 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        # ── Raw Weights + Ensemble Gates ───────────────────────────────────
+        # ── Classifier Probs + Ensemble Gates ─────────────────────────────
         cl, cr = st.columns([1.3, 1])
 
         with cl:
-            st.markdown('<div class="sec-head">Ensemble Weights</div>', unsafe_allow_html=True)
-            raw_w = signal.get('raw_weights', {})
-            if raw_w:
+            clf_probs = signal.get('classifier_probs', {})
+            raw_w     = signal.get('raw_weights', {})
+            # Show classifier probs if available, else DDPG weights
+            display_w   = clf_probs if clf_probs else raw_w
+            sec_title   = 'Classifier Probabilities' if clf_probs else 'Ensemble Weights'
+            st.markdown(f'<div class="sec-head">{sec_title}</div>', unsafe_allow_html=True)
+            if display_w:
                 rows = ''
-                for asset, w in sorted(raw_w.items(), key=lambda x: -x[1]):
-                    color    = ASSET_COLORS.get(asset, '#15803d')
-                    is_pick  = asset == pick
-                    border   = f'border:2px solid {color};' if is_pick else ''
-                    rows += f"""<div class="alloc-row" style="{border}border-radius:6px;padding:2px 6px">
-                        <span class="alloc-ticker" style="{'font-weight:900' if is_pick else ''}">{asset}</span>
-                        <div class="alloc-bg">
-                            <div class="alloc-fill" style="width:{w*100:.1f}%;background:{color}"></div>
-                        </div>
-                        <span class="alloc-pct">{w*100:.1f}%</span>
-                    </div>"""
+                for asset, w in sorted(display_w.items(), key=lambda x: -x[1]):
+                    color   = ASSET_COLORS.get(asset, '#15803d')
+                    is_pick = asset == pick
+                    bold    = 'font-weight:900;' if is_pick else ''
+                    outline = f'outline:2px solid {color};outline-offset:2px;border-radius:6px;' if is_pick else ''
+                    rows += f'<div class="alloc-row" style="{outline}padding:2px 6px;margin-bottom:2px"><span class="alloc-ticker" style="{bold}">{asset}</span><div class="alloc-bg"><div class="alloc-fill" style="width:{w*100:.1f}%;background:{color}"></div></div><span class="alloc-pct" style="{bold}">{w*100:.1f}%</span></div>'
                 st.markdown(rows, unsafe_allow_html=True)
-            st.markdown(f"""<div style="font-size:13px;color:#888888;margin-top:14px;font-weight:500">
-                Rolling Sharpe: {rs:.2f} &nbsp;·&nbsp; Active Rules: {signal.get('n_active_rules',0)}
-            </div>""", unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:13px;color:#888888;margin-top:14px;font-weight:500">Rolling Sharpe: {rs:.2f} &nbsp;·&nbsp; Active Rules: {signal.get("n_active_rules",0)}</div>', unsafe_allow_html=True)
 
         with cr:
             gA = signal.get('gate_A',0) or 0
@@ -393,7 +390,7 @@ def main():
                 </div>
             </div>""", unsafe_allow_html=True)
 
-            rules = signal.get('active_rule_summary', [])
+            rules = list(dict.fromkeys(signal.get('active_rule_summary', [])))  # deduplicate
             if rules:
                 st.markdown('<div class="sec-head" style="margin-top:24px">Active Rules</div>',
                             unsafe_allow_html=True)
