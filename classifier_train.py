@@ -21,19 +21,19 @@ from hmm_train import RegimeDetector
 
 DEVICE     = torch.device('cpu')
 _CPU_MODE  = os.environ.get('REALM_CPU_MODE', '0') == '1'
-MAX_EPOCHS = 30 if _CPU_MODE else 80
-LR         = 1e-3
+MAX_EPOCHS = 40 if _CPU_MODE else 100
+LR         = 3e-4
 BATCH_SIZE = 128
 LOOKBACK   = 5
 N_CLASSES  = cfg.N_ASSETS          # 7
 _N_ETF     = len(cfg.ASSETS)       # 6 (no CASH)
 INPUT_DIM  = cfg.TFT_EMBEDDING_DIM + cfg.HMM_N_STATES + 7 + (LOOKBACK * _N_ETF)  # 109
-D_MODEL    = 256
+D_MODEL    = 64
 N_HEADS    = 4
-N_LAYERS   = 3
-DROPOUT    = 0.2
-PATIENCE   = 8
-FOCAL_GAMMA= 2.0
+N_LAYERS   = 1
+DROPOUT    = 0.3
+PATIENCE   = 10
+FOCAL_GAMMA= 1.0
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -150,7 +150,11 @@ def focal_loss(logits, targets, class_weights, gamma=FOCAL_GAMMA):
 def train(model, train_loader, val_loader, class_weights):
     cw        = torch.tensor(class_weights, dtype=torch.float32)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=MAX_EPOCHS)
+    n_steps   = MAX_EPOCHS * len(train_loader)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer, max_lr=LR, total_steps=n_steps, pct_start=0.1
+    )
+    step_sched = True  # step per batch not per epoch
 
     best_acc, best_state, patience_ctr, log = 0.0, None, 0, []
 
@@ -164,9 +168,9 @@ def train(model, train_loader, val_loader, class_weights):
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            scheduler.step()
             tr_correct += (logits.argmax(-1) == y_b).sum().item()
             tr_total   += len(y_b)
-        scheduler.step()
 
         model.eval()
         va_correct = va_total = va_loss = 0
@@ -258,6 +262,7 @@ def main():
     counts_tr  = np.bincount(y[:split], minlength=N_CLASSES).astype(float)
     counts_tr  = np.maximum(counts_tr, 1)
     class_w    = (len(y[:split]) / (N_CLASSES * counts_tr)).astype(np.float32)
+    class_w    = np.clip(class_w, 0.5, 3.0)   # cap weights — prevent rare class dominating
     print(f"[CLF] Class weights: { {cfg.ALL_ASSETS[i]: round(float(class_w[i]),2) for i in range(N_CLASSES)} }")
 
     model   = ETFClassifier().to(DEVICE)
