@@ -1,0 +1,50 @@
+name: Daily Training
+
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 01:00 UTC daily
+  workflow_dispatch:        # manual trigger
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340    # 5h 40m hard limit
+
+    env:
+      HF_TOKEN:         ${{ secrets.HF_TOKEN }}
+      HF_SOURCE_REPO:   ${{ secrets.HF_SOURCE_REPO }}
+      HF_MODELS_REPO:   ${{ secrets.HF_MODELS_REPO }}
+      HF_RESULTS_REPO:  ${{ secrets.HF_RESULTS_REPO }}
+      GEMINI_API_KEY:   ${{ secrets.GEMINI_API_KEY }}
+      REALM_CPU_MODE:   "1"   # signals reduced epochs
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Train HMM
+        run: python hmm_train.py
+
+      - name: Train TFT
+        run: python tft_train.py
+
+      - name: Train DDPG
+        run: python ddpg_train.py
+
+      - name: Run ERL
+        run: python erl_train.py
+
+      - name: Generate signal
+        run: python predict.py
+
+      - name: Score previous signal
+        run: python score.py
