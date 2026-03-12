@@ -267,7 +267,7 @@ def train_tft(
     """
     optimizer = optim.Adam(model.parameters(), lr=cfg.TFT_LR)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, patience=3, factor=0.5, verbose=True
+        optimizer, patience=3, factor=0.5
     )
     criterion = nn.MSELoss()
 
@@ -433,7 +433,7 @@ def main():
         )
         detector = RegimeDetector.load(det_path)
 
-        hmm_feats = compute_hmm_features(data['prices'], data['benchmark'])
+        hmm_feats = load_or_compute_hmm_features(data)
         scaler    = detector.scaler
         X_all     = scaler.transform(hmm_feats).values
         labels    = pd.Series(
