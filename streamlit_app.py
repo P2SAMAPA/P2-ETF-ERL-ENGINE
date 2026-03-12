@@ -296,7 +296,8 @@ def main():
         rname     = signal.get('regime_name','Unknown')
         cp        = signal.get('crisis_prob') or 0
         rs        = signal.get('rolling_sharpe') or 0
-        sig_date  = signal.get('date','—')
+        pick_source= signal.get('pick_source', 'DDPG_ARGMAX')
+        src_label  = '🧠 AI Classifier' if pick_source == 'CLASSIFIER' else '⚙️ DDPG Ensemble'
         if np.isnan(cp): cp=0
         if np.isnan(rs): rs=0
 
@@ -316,6 +317,7 @@ def main():
                 <div style="font-size:72px;font-weight:900;letter-spacing:-2px;
                             color:{pick_color};line-height:1">{pick}</div>
                 <div style="font-size:13px;color:#6b7280;margin-top:6px">{sig_date}</div>
+                <div style="font-size:11px;font-weight:600;color:#6b7280;margin-top:4px">{src_label}</div>
             </div>
             <div style="flex:1;border-left:1.5px solid #e5e7eb;padding-left:36px;">
                 <div style="display:flex;gap:40px;margin-bottom:20px;">
