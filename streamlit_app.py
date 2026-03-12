@@ -466,13 +466,21 @@ def main():
     # PERFORMANCE
     # ══════════════════════════════════════════════════════════════════════════
     with tab3:
-        if perf and not perf.get('insufficient_data'):
+        n_scored = perf.get('n_scored', 0) if perf else 0
+        scored_days = [s for s in history if s.get('scored')]
+        first_date  = scored_days[0].get('date','—') if scored_days else '—'
+        last_date   = scored_days[-1].get('date','—') if scored_days else '—'
+        period_label = f"{n_scored} day(s) · {first_date} → {last_date}" if n_scored > 0 else "No scored days yet"
+
+        st.markdown(f'<div style="font-size:13px;color:#6b7280;margin-bottom:16px">📅 Performance period: <b>{period_label}</b></div>', unsafe_allow_html=True)
+
+        if perf and n_scored >= 10:
             c1,c2,c3,c4 = st.columns(4)
             for col, label, val, gp in [
                 (c1,"Ann. Excess Return", perf.get('ann_excess_return'), True),
-                (c2,"Excess Sharpe",      perf.get('excess_sharpe') if perf.get('n_scored',0)>=5 else None, None),
+                (c2,"Excess Sharpe",      perf.get('excess_sharpe'), None),
                 (c3,"Win Rate vs AGG",    perf.get('win_rate_vs_bench'), True),
-                (c4,"Max Drawdown",       perf.get('max_drawdown') if perf.get('n_scored',0)>=5 else None, False),
+                (c4,"Max Drawdown",       perf.get('max_drawdown'), False),
             ]:
                 with col:
                     if label=="Excess Sharpe":
@@ -486,8 +494,7 @@ def main():
                         <div class="card-value {c}">{disp}</div>
                     </div>""", unsafe_allow_html=True)
         else:
-            n = perf.get('n_scored', 0) if perf else 0
-            st.info(f"Only {n} scored day(s) so far — Sharpe and drawdown metrics require at least 5 days.")
+            st.info(f"Need at least 10 scored days for meaningful stats — currently {n_scored}. Check back soon.")
 
         ec = chart_equity(history)
         if ec:
