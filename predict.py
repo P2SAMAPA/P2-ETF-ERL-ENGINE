@@ -21,7 +21,7 @@ from hmm_train import RegimeDetector
 from ensemble import EnsemblePolicy
 from memory import Rulebook
 from kelly import format_allocation
-from classifier_train import ETFClassifier, INPUT_DIM, D_MODEL, N_HEADS, N_LAYERS, N_CLASSES, LOOKBACK
+from classifier_train import INPUT_DIM, N_CLASSES, LOOKBACK
 
 
 # ── Loader Helpers ─────────────────────────────────────────────────────────────
