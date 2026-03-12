@@ -22,7 +22,7 @@ from hmm_train import RegimeDetector
 DEVICE     = torch.device('cpu')
 _CPU_MODE  = os.environ.get('REALM_CPU_MODE', '0') == '1'
 MAX_EPOCHS = 40 if _CPU_MODE else 100
-LR         = 3e-4
+LR         = 5e-4
 BATCH_SIZE = 128
 LOOKBACK   = 5
 N_CLASSES  = cfg.N_ASSETS          # 7
@@ -31,9 +31,9 @@ INPUT_DIM  = cfg.TFT_EMBEDDING_DIM + cfg.HMM_N_STATES + 7 + (LOOKBACK * _N_ETF) 
 D_MODEL    = 64
 N_HEADS    = 4
 N_LAYERS   = 1
-DROPOUT    = 0.3
+DROPOUT    = 0.4
 PATIENCE   = 10
-FOCAL_GAMMA= 1.0
+FOCAL_GAMMA= 0.5
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -130,19 +130,29 @@ class ETFDataset(Dataset):
 # ── Model ─────────────────────────────────────────────────────────────────────
 
 class ETFClassifier(nn.Module):
+    """Simple MLP — better than Transformer for 109 flat features + 3k samples."""
     def __init__(self, input_dim=INPUT_DIM, d_model=D_MODEL,
                  n_heads=N_HEADS, n_layers=N_LAYERS,
                  n_classes=N_CLASSES, dropout=DROPOUT):
         super().__init__()
-        self.proj    = nn.Sequential(nn.Linear(input_dim, d_model), nn.GELU(), nn.Dropout(dropout))
-        enc_layer    = nn.TransformerEncoderLayer(d_model, n_heads, d_model*4, dropout, batch_first=True)
-        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=n_layers)
-        self.head    = nn.Sequential(nn.LayerNorm(d_model), nn.Dropout(dropout), nn.Linear(d_model, n_classes))
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, n_classes),
+        )
 
     def forward(self, x):
-        z = self.proj(x).unsqueeze(1)
-        z = self.encoder(z).squeeze(1)
-        return self.head(z)
+        return self.net(x)
 
     def predict_proba(self, x):
         with torch.no_grad():
@@ -152,10 +162,12 @@ class ETFClassifier(nn.Module):
 # ── Focal Loss ────────────────────────────────────────────────────────────────
 
 def focal_loss(logits, targets, class_weights, gamma=FOCAL_GAMMA):
-    """Focal loss with class weights. Penalises easy predictions."""
+    """Weighted cross-entropy with mild focal term."""
     ce  = F.cross_entropy(logits, targets, weight=class_weights, reduction='none')
-    pt  = torch.exp(-ce)
-    return ((1 - pt) ** gamma * ce).mean()
+    if gamma > 0:
+        pt   = torch.exp(-ce.detach())
+        ce   = ((1 - pt) ** gamma) * ce
+    return ce.mean()
 
 
 # ── Training ──────────────────────────────────────────────────────────────────
