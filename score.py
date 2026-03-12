@@ -142,12 +142,17 @@ def compute_performance_summary(history):
     ann_bench  = float((1 + bench_rets).prod() ** (252 / len(bench_rets)) - 1)
     ann_excess = ann_port - ann_bench
 
-    port_sharpe = float(
-        (port_rets.mean() / (port_rets.std() + 1e-8)) * np.sqrt(252)
-    )
-    excess_sharpe = float(
-        (excess.mean() / (excess.std() + 1e-8)) * np.sqrt(252)
-    )
+    # Require at least 5 days of data for std-based metrics to be meaningful
+    if len(port_rets) < 5:
+        port_sharpe   = float('nan')
+        excess_sharpe = float('nan')
+    else:
+        port_sharpe = float(
+            (port_rets.mean() / (port_rets.std() + 1e-8)) * np.sqrt(252)
+        )
+        excess_sharpe = float(
+            (excess.mean() / (excess.std() + 1e-8)) * np.sqrt(252)
+        )
 
     # Drawdown
     cumulative = (1 + port_rets).cumprod()
