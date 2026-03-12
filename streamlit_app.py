@@ -466,10 +466,10 @@ def main():
     # PERFORMANCE
     # ══════════════════════════════════════════════════════════════════════════
     with tab3:
-        n_scored = perf.get('n_scored', 0) if perf else 0
-        scored_days = [s for s in history if s.get('scored')]
-        first_date  = scored_days[0].get('date','—') if scored_days else '—'
-        last_date   = scored_days[-1].get('date','—') if scored_days else '—'
+        scored_days  = [s for s in history if s.get('scored')]
+        n_scored     = len(scored_days)
+        first_date   = scored_days[0].get('date','—') if scored_days else '—'
+        last_date    = scored_days[-1].get('date','—') if scored_days else '—'
         period_label = f"{n_scored} day(s) · {first_date} → {last_date}" if n_scored > 0 else "No scored days yet"
 
         st.markdown(f'<div style="font-size:13px;color:#6b7280;margin-bottom:16px">📅 Performance period: <b>{period_label}</b></div>', unsafe_allow_html=True)
