@@ -124,7 +124,7 @@ def classifier_pick(model, tft_embedding, hmm_probs_vec, macro_vec, lookback_ret
     conviction = float(probs[best_idx])
     pick       = cfg.ALL_ASSETS[best_idx]
 
-    prob_dict = {a: round(float(p), 4) for a, p in zip(cfg.ALL_ASSETS, probs)}
+    prob_dict = {a: round(float(p), 4) for a, p in zip(cfg.ASSETS, probs)}
     return pick, conviction, prob_dict
 
 
@@ -141,10 +141,10 @@ def pick_etf(ensemble_output, regime_output, active_rules):
     # Hard override: Acute Crisis only
     regime_name = regime_output['regime_name']
     if regime_name == 'Acute Crisis':
-        return 'CASH', 1.0, 'Acute Crisis regime — defensive override'
+        pass  # Acute Crisis — still pick best ETF, no CASH
 
     weights = ensemble_output['final_weights']   # shape (N_ASSETS,)
-    assets  = cfg.ALL_ASSETS                     # includes CASH last
+    assets  = cfg.ALL_ASSETS
 
     # Apply rule nudges: if a rule says reduce X, penalise its weight
     nudged = weights.copy()
@@ -160,9 +160,7 @@ def pick_etf(ensemble_output, regime_output, active_rules):
     conviction  = float(nudged[best_idx])
     pick        = assets[best_idx]
 
-    # Low conviction → CASH
-    if conviction < 0.20:
-        return 'CASH', conviction, f'Low conviction ({conviction:.0%}) — no clear pick'
+    # Low conviction — still pick best ETF, just report low conviction
 
     reason = f'{pick} has highest ensemble weight ({conviction:.0%})'
     if active_rules:
@@ -208,7 +206,7 @@ def build_signal(today_str, regime_output, ensemble_output,
         },
         # ── Ensemble internals (kept for diagnostics) ──
         'raw_weights':       {a: round(float(w), 4)
-                              for a, w in zip(cfg.ALL_ASSETS, ensemble_output['final_weights'])},
+                              for a, w in zip(cfg.ASSETS, ensemble_output['final_weights'][:len(cfg.ASSETS)])},
         'gate_A':            ensemble_output['gates']['A'],
         'gate_B':            ensemble_output['gates']['B'],
         'gate_C':            ensemble_output['gates']['C'],
@@ -310,11 +308,7 @@ def main():
 
         clf_pick, clf_conv, clf_probs = classifier_pick(clf, tft_embedding, hmm_probs, mac_vec, lb)
 
-        # Override with CASH if Acute Crisis
-        if regime_output['regime_name'] == 'Acute Crisis':
-            clf_pick, clf_conv = 'CASH', 1.0
-            clf_probs = {a: 0.0 for a in cfg.ALL_ASSETS}
-            clf_probs['CASH'] = 1.0
+        # No CASH override — always pick highest conviction ETF
 
         pick_source = 'CLASSIFIER'
         print(f"[predict] Classifier → {clf_pick} (conviction={clf_conv:.1%})")
