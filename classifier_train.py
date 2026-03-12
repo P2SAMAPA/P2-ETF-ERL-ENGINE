@@ -37,7 +37,7 @@ D_MODEL    = 128
 N_HEADS    = 4
 N_LAYERS   = 2
 DROPOUT    = 0.1
-PATIENCE   = 8
+PATIENCE   = 5
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -58,14 +58,15 @@ def _push(local_path, repo_id, repo_path):
 
 # ── Label Generation ──────────────────────────────────────────────────────────
 
-def build_labels(returns: pd.DataFrame, macro: pd.DataFrame) -> pd.Series:
+def build_labels(returns: pd.DataFrame, macro: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     """
     For each day t, label = best asset to hold on day t+1.
     CASH if ALL next-day ETF returns < 0 OR VIX > 25.
     Returns pd.Series indexed by date (day t), values 0..6 (asset index).
     """
     assets = cfg.ASSETS  # TLT LQD HYG VNQ GLD SLV
-    labels = {}
+    labels       = {}
+    best_ret_map = {}
 
     for i in range(len(returns) - 1):
         today    = returns.index[i]
@@ -81,22 +82,30 @@ def build_labels(returns: pd.DataFrame, macro: pd.DataFrame) -> pd.Series:
         etf_rets = [next_ret.get(a, 0.0) for a in assets]
         if all(r < 0 for r in etf_rets) or vix_today > 25:
             labels[today] = cfg.N_ASSETS - 1   # CASH index = 6
+            best_ret_map[today] = 0.0           # CASH return = 0
         else:
             best_idx = int(np.argmax(etf_rets))
             labels[today] = best_idx
+            best_ret_map[today] = float(etf_rets[best_idx])
 
-    return pd.Series(labels, name='label')
+    best_returns = pd.Series(best_ret_map, name='best_return')
+    return pd.Series(labels, name='label'), best_returns
 
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
 
 class ETFDataset(Dataset):
-    def __init__(self, features: np.ndarray, labels: np.ndarray):
+    def __init__(self, features: np.ndarray, labels: np.ndarray,
+                 sample_weights: np.ndarray = None):
         self.X = torch.tensor(features, dtype=torch.float32)
         self.y = torch.tensor(labels,   dtype=torch.long)
+        if sample_weights is not None:
+            self.w = torch.tensor(sample_weights, dtype=torch.float32)
+        else:
+            self.w = torch.ones(len(labels), dtype=torch.float32)
 
     def __len__(self):  return len(self.y)
-    def __getitem__(self, i): return self.X[i], self.y[i]
+    def __getitem__(self, i): return self.X[i], self.y[i], self.w[i]
 
 
 def build_features_and_labels(
@@ -105,7 +114,8 @@ def build_features_and_labels(
     hmm_probs:  pd.DataFrame,
     macro:      pd.DataFrame,
     labels:     pd.Series,
-) -> tuple[np.ndarray, np.ndarray, list]:
+    best_returns: pd.Series = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list]:
     """
     Align all inputs and construct (N, INPUT_DIM) feature matrix.
     """
@@ -117,7 +127,7 @@ def build_features_and_labels(
     common = common.intersection(hmm_probs.index)
     common = common.sort_values()
 
-    X_rows, y_rows, dates = [], [], []
+    X_rows, y_rows, w_rows, dates = [], [], [], []
 
     for t in common:
         emb  = embeddings.loc[t].values.astype(np.float32)         # 64
@@ -142,9 +152,18 @@ def build_features_and_labels(
 
         X_rows.append(feat)
         y_rows.append(int(labels.loc[t]))
+        # Sample weight = absolute next-day return of best asset (P&L-weighted)
+        if best_returns is not None and t in best_returns.index:
+            w = max(abs(float(best_returns.loc[t])), 1e-4)
+        else:
+            w = 1e-4
+        w_rows.append(w)
         dates.append(t)
 
-    return np.array(X_rows), np.array(y_rows), dates
+    # Normalise weights to mean=1 so loss scale is stable
+    w_arr = np.array(w_rows, dtype=np.float32)
+    w_arr = w_arr / (w_arr.mean() + 1e-8)
+    return np.array(X_rows), np.array(y_rows), w_arr, dates
 
 
 # ── Model ─────────────────────────────────────────────────────────────────────
@@ -180,7 +199,7 @@ class ETFClassifier(nn.Module):
 # ── Training ──────────────────────────────────────────────────────────────────
 
 def train_classifier(model, train_loader, val_loader):
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = nn.CrossEntropyLoss(reduction='none', label_smoothing=0.05)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, patience=3, factor=0.5
@@ -196,10 +215,10 @@ def train_classifier(model, train_loader, val_loader):
         # Train
         model.train()
         train_correct, train_total = 0, 0
-        for X_batch, y_batch in train_loader:
+        for X_batch, y_batch, w_batch in train_loader:
             optimizer.zero_grad()
             logits = model(X_batch)
-            loss   = criterion(logits, y_batch)
+            loss   = (criterion(logits, y_batch) * w_batch).mean()
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -211,9 +230,9 @@ def train_classifier(model, train_loader, val_loader):
         model.eval()
         val_correct, val_total, val_loss = 0, 0, 0.0
         with torch.no_grad():
-            for X_batch, y_batch in val_loader:
+            for X_batch, y_batch, w_batch in val_loader:
                 logits  = model(X_batch)
-                val_loss += criterion(logits, y_batch).item()
+                val_loss += criterion(logits, y_batch).mean().item()
                 preds = logits.argmax(dim=-1)
                 val_correct += (preds == y_batch).sum().item()
                 val_total   += len(y_batch)
@@ -248,7 +267,7 @@ def class_accuracy(model, loader):
     correct = np.zeros(N_CLASSES)
     total   = np.zeros(N_CLASSES)
     with torch.no_grad():
-        for X_batch, y_batch in loader:
+        for X_batch, y_batch, _ in loader:
             preds = model(X_batch).argmax(dim=-1)
             for c in range(N_CLASSES):
                 mask = y_batch == c
@@ -300,7 +319,7 @@ def main():
 
     # 5. Build labels
     print("[CLF] Building next-day labels...")
-    labels = build_labels(data['returns'], macro)
+    labels, best_returns = build_labels(data['returns'], macro)
     label_counts = pd.Series(labels).value_counts().sort_index()
     print("[CLF] Label distribution:")
     for idx, cnt in label_counts.items():
@@ -309,7 +328,7 @@ def main():
 
     # 6. Build feature matrix
     print("[CLF] Building feature matrix...")
-    X, y, dates = build_features_and_labels(data, embeddings, hmm_probs, macro, labels)
+    X, y, sample_weights, dates = build_features_and_labels(data, embeddings, hmm_probs, macro, labels, best_returns)
     print(f"[CLF] Dataset: {X.shape[0]} samples × {X.shape[1]} features")
 
     # 7. Train/val split (80/20 chronological)
@@ -318,8 +337,9 @@ def main():
     X_va, y_va = X[split:], y[split:]
     print(f"[CLF] Train: {len(X_tr)} | Val: {len(X_va)}")
 
-    train_ds = ETFDataset(X_tr, y_tr)
-    val_ds   = ETFDataset(X_va, y_va)
+    w_tr, w_va = sample_weights[:split], sample_weights[split:]
+    train_ds = ETFDataset(X_tr, y_tr, w_tr)
+    val_ds   = ETFDataset(X_va, y_va, w_va)
     train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True)
     val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False)
 
@@ -327,6 +347,11 @@ def main():
     model = ETFClassifier().to(DEVICE)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"[CLF] Model parameters: {n_params:,}")
+
+    # Sample weights based on actual P&L of correct prediction
+    avg_w = {cfg.ALL_ASSETS[i]: round(float(sample_weights[y==i].mean()) if (y==i).any() else 0, 4)
+             for i in range(N_CLASSES)}
+    print(f"[CLF] Mean sample weight per class: {avg_w}")
 
     log, best_val_acc = train_classifier(model, train_loader, val_loader)
 
