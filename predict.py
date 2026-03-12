@@ -13,12 +13,15 @@ from huggingface_hub import HfApi, hf_hub_download
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as cfg
+import torch
+import torch.nn as nn
 from loader import load_all
 from features import compute_hmm_features, load_or_compute_hmm_features, current_sharpe
 from hmm_train import RegimeDetector
 from ensemble import EnsemblePolicy
 from memory import Rulebook
 from kelly import format_allocation
+from classifier_train import ETFClassifier, INPUT_DIM, D_MODEL, N_HEADS, N_LAYERS, N_CLASSES, LOOKBACK
 
 
 # ── Loader Helpers ─────────────────────────────────────────────────────────────
@@ -85,6 +88,46 @@ def append_and_trim(history, signal):
     return history[-cfg.MAX_HISTORY_RECORDS:]
 
 
+
+# ── Classifier Inference ───────────────────────────────────────────────────────
+
+def load_classifier():
+    """Load ETF classifier from HF if available."""
+    try:
+        path  = _hf_download('models/etf_classifier.pt', cfg.HF_MODELS_REPO)
+        model = ETFClassifier(INPUT_DIM, D_MODEL, N_HEADS, N_LAYERS, N_CLASSES)
+        model.load_state_dict(torch.load(path, map_location='cpu'))
+        model.eval()
+        print("[predict] ETF classifier loaded ✓")
+        return model
+    except Exception as e:
+        print(f"[predict] Classifier not available ({e}) — using DDPG fallback")
+        return None
+
+
+def classifier_pick(model, tft_embedding, hmm_probs_vec, macro_vec, lookback_returns):
+    """
+    Run classifier forward pass → single ETF pick + conviction.
+    Returns (pick: str, conviction: float, probs: dict)
+    """
+    lb = lookback_returns.flatten().astype(np.float32)
+    feat = np.concatenate([
+        tft_embedding.astype(np.float32),
+        hmm_probs_vec.astype(np.float32),
+        macro_vec.astype(np.float32),
+        lb,
+    ])
+    x     = torch.tensor(feat, dtype=torch.float32).unsqueeze(0)
+    probs = model.predict_proba(x).squeeze(0).numpy()
+
+    best_idx   = int(np.argmax(probs))
+    conviction = float(probs[best_idx])
+    pick       = cfg.ALL_ASSETS[best_idx]
+
+    prob_dict = {a: round(float(p), 4) for a, p in zip(cfg.ALL_ASSETS, probs)}
+    return pick, conviction, prob_dict
+
+
 # ── Signal Construction ────────────────────────────────────────────────────────
 
 def pick_etf(ensemble_output, regime_output, active_rules):
@@ -129,8 +172,17 @@ def pick_etf(ensemble_output, regime_output, active_rules):
 
 
 def build_signal(today_str, regime_output, ensemble_output,
-                 rolling_sharpe, current_weights, active_rules, basis='live'):
-    pick, conviction, rationale = pick_etf(ensemble_output, regime_output, active_rules)
+                 rolling_sharpe, current_weights, active_rules, basis='live',
+                 clf_pick=None, clf_conv=0.0, clf_probs=None, pick_source='DDPG_ARGMAX'):
+    # Use classifier pick if provided, else fall back to DDPG argmax
+    if clf_pick is not None:
+        pick       = clf_pick
+        conviction = clf_conv
+        rationale  = f"{pick} selected by {pick_source} (conviction={clf_conv:.0%})"
+        if active_rules:
+            rationale += f" | {len(active_rules)} active rule(s)"
+    else:
+        pick, conviction, rationale = pick_etf(ensemble_output, regime_output, active_rules)
 
     # Previous pick for comparison
     prev_pick = current_weights  # we'll derive from history in main
@@ -143,6 +195,8 @@ def build_signal(today_str, regime_output, ensemble_output,
         'pick':              pick,
         'conviction':        round(conviction, 4),
         'rationale':         rationale,
+        'pick_source':       pick_source,
+        'classifier_probs':  clf_probs or {},
         # ── Regime ──
         'regime':            regime_output['regime'],
         'regime_name':       regime_output['regime_name'],
@@ -223,19 +277,58 @@ def main():
     ]).astype(np.float32)
     assert state.shape[0] == cfg.DDPG_STATE_DIM
 
-    # 7. Ensemble forward pass
+    # 7a. Try classifier first (Option B)
+    clf = load_classifier()
+
+    # 7b. Also run DDPG ensemble (for gates + fallback weights)
     ensemble = EnsemblePolicy()
     ensemble_output = ensemble.forward(
         state=state, hmm_probs=hmm_probs,
         transition_entropy=regime_output['transition_entropy'],
         rolling_sharpe=rolling_sharpe,
     )
-    print(f"[predict] Kelly: {ensemble_output['kelly_info']['fraction']:.3f} | "
-          f"Allocation: {ensemble_output['allocation']}")
+
+    # 7c. Determine pick source
+    if clf is not None:
+        # Get macro vector for classifier
+        macro_df  = data.get('macro')
+        today_ts  = pd.Timestamp(date.today())
+        past_mac  = macro_df[macro_df.index <= today_ts] if macro_df is not None else None
+        if past_mac is not None and len(past_mac) > 0:
+            mac_vec = past_mac.iloc[-1][['TNX','DXY','CORP_SPREAD','HY_SPREAD',
+                                          'VIX','T10Y2Y','TBILL_3M']].values.astype(np.float32)
+        else:
+            mac_vec = np.zeros(7, dtype=np.float32)
+
+        # Lookback returns
+        rets = data['returns'][cfg.ASSETS]
+        lb_end = rets.index.get_indexer([today_ts], method='ffill')[0]
+        if lb_end >= LOOKBACK:
+            lb = rets.iloc[lb_end - LOOKBACK:lb_end].values.astype(np.float32)
+        else:
+            lb = np.zeros((LOOKBACK, cfg.N_ASSETS - 1), dtype=np.float32)
+
+        clf_pick, clf_conv, clf_probs = classifier_pick(clf, tft_embedding, hmm_probs, mac_vec, lb)
+
+        # Override with CASH if Acute Crisis
+        if regime_output['regime_name'] == 'Acute Crisis':
+            clf_pick, clf_conv = 'CASH', 1.0
+            clf_probs = {a: 0.0 for a in cfg.ALL_ASSETS}
+            clf_probs['CASH'] = 1.0
+
+        pick_source = 'CLASSIFIER'
+        print(f"[predict] Classifier → {clf_pick} (conviction={clf_conv:.1%})")
+    else:
+        # Fallback: DDPG argmax
+        clf_pick, clf_conv, clf_probs = pick_etf(ensemble_output, regime_output, active_rules)
+        pick_source = 'DDPG_ARGMAX'
+        print(f"[predict] DDPG fallback → {clf_pick} (conviction={clf_conv:.1%})")
 
     # 8. Build + store signal
     signal  = build_signal(today_str, regime_output, ensemble_output,
-                           rolling_sharpe, current_weights, active_rules)
+                           rolling_sharpe, current_weights, active_rules,
+                           clf_pick=clf_pick, clf_conv=clf_conv,
+                           clf_probs=clf_probs, pick_source=pick_source)
     history = append_and_trim(history, signal)
 
     # 9. Save + push
