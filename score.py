@@ -261,13 +261,19 @@ def main():
             continue
 
         actual_returns, actual_date = result
-        allocation = signal.get('allocation', {})
-        if not allocation:
-            print(f"[score] No allocation in signal for {signal_date} — skipping")
-            continue
 
-        # Portfolio return
-        port_ret  = compute_portfolio_return(allocation, actual_returns)
+        # Single pick scoring
+        pick = signal.get('pick') or signal.get('top_asset')
+        if not pick:
+            print(f"[score] No pick in signal for {signal_date} — skipping")
+            continue
+        if pick == 'CASH':
+            port_ret = 0.0
+        elif pick in actual_returns.index:
+            port_ret = float(actual_returns.loc[pick])
+        else:
+            print(f"[score] Pick {pick} not in returns for {signal_date} — skipping")
+            continue
         bench_ret = actual_returns.get(cfg.BENCHMARK, 0.0)
         excess    = port_ret - bench_ret
 
