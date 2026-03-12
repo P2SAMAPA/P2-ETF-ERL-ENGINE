@@ -63,19 +63,19 @@ HMM_TOL         = 1e-4
 HMM_COVARIANCE  = 'full'
 
 REGIME_NAMES    = {
-    0: 'Low Vol Expansion',
-    1: 'Mid Cycle Growth',
-    2: 'Late Cycle',
-    3: 'Curve Flattening',
-    4: 'Credit Stress',
-    5: 'Risk Off',
+    0: 'Mid Cycle Growth',
+    1: 'Late Cycle',
+    2: 'Curve Flattening',
+    3: 'Credit Stress',
+    4: 'Risk Off',
+    5: 'Low Vol Expansion',
     6: 'Acute Crisis',
     7: 'Recovery',
 }
 
 # Which regimes each ensemble policy specialises in
-POLICY_A_REGIMES = [4, 5, 6]                        # crisis
-POLICY_B_REGIMES = [0, 1, 7]                        # expansion
+POLICY_A_REGIMES = [4, 6, 7]                     # crisis — Credit Stress, Acute Crisis, Risk Off
+POLICY_B_REGIMES = [0, 1, 5]                     # expansion — Recovery, Mid Cycle, Low Vol Expansion
 POLICY_C_REGIMES = list(range(HMM_N_STATES))        # all regimes
 
 # ── Temporal Fusion Transformer ────────────────────────────────────────────────
