@@ -27,8 +27,10 @@ from hmm_train import RegimeDetector
 
 LOOKBACK   = 5
 N_CLASSES  = len(cfg.ASSETS)   # 6 — TLT LQD HYG VNQ GLD SLV
-_N_ETF     = len(cfg.ASSETS)
-INPUT_DIM  = cfg.TFT_EMBEDDING_DIM + cfg.HMM_N_STATES + 7 + (LOOKBACK * _N_ETF)  # 109
+_N_ETF     = len(cfg.ASSETS)       # 6
+_MOM_WINS  = [1, 5, 21, 63]        # momentum lookback windows
+_MOM_FEATS = len(_MOM_WINS) * _N_ETF * 3  # returns + ranks + consistency = 72
+INPUT_DIM  = cfg.TFT_EMBEDDING_DIM + cfg.HMM_N_STATES + 7 + (LOOKBACK * _N_ETF) + _MOM_FEATS  # 64+8+7+30+72=181
 
 _CPU_MODE  = os.environ.get('REALM_CPU_MODE', '0') == '1'
 
@@ -59,6 +61,52 @@ def build_labels(returns: pd.DataFrame, macro: pd.DataFrame) -> pd.Series:
 
 # ── Features ──────────────────────────────────────────────────────────────────
 
+def compute_momentum_features(returns: pd.DataFrame, t, ret_idx) -> np.ndarray:
+    """
+    For date t, compute momentum features across all ETFs:
+    - Raw returns over [1, 5, 21, 63] day windows
+    - Cross-sectional rank (1=best, 6=worst) at each window
+    - % positive days over 21-day window (consistency)
+    Returns flat array of length _MOM_FEATS.
+    """
+    assets  = cfg.ASSETS
+    pos     = ret_idx.get_loc(t) if t in ret_idx else -1
+    if pos < 1:
+        return np.zeros(_MOM_FEATS, dtype=np.float32)
+
+    feats = []
+    rets_df = returns[assets]
+
+    # Raw momentum at each window
+    for w in _MOM_WINS:
+        if pos >= w:
+            cum = (1 + rets_df.iloc[pos-w:pos]).prod() - 1  # cumulative return
+        else:
+            cum = pd.Series(0.0, index=assets)
+        feats.append(cum.values.astype(np.float32))
+
+    # Cross-sectional rank at each window (normalised 0-1, 1=best)
+    for w in _MOM_WINS:
+        if pos >= w:
+            cum = (1 + rets_df.iloc[pos-w:pos]).prod() - 1
+        else:
+            cum = pd.Series(0.0, index=assets)
+        ranks = cum.rank(ascending=True) / len(assets)  # 1/6 to 6/6
+        feats.append(ranks.values.astype(np.float32))
+
+    # 21-day consistency (% positive days)
+    w = 21
+    if pos >= w:
+        pct_pos = (rets_df.iloc[pos-w:pos] > 0).mean()
+    else:
+        pct_pos = pd.Series(0.5, index=assets)
+    feats.append(pct_pos.values.astype(np.float32))
+
+    result = np.concatenate(feats)
+    assert result.shape[0] == _MOM_FEATS, f"mom feats dim={result.shape[0]} expected {_MOM_FEATS}"
+    return result
+
+
 def build_feature_matrix(data, embeddings, hmm_probs, macro, labels):
     mac_cols = ['TNX','DXY','CORP_SPREAD','HY_SPREAD','VIX','T10Y2Y','TBILL_3M']
     common   = labels.index.intersection(embeddings.dropna().index).intersection(hmm_probs.index)
@@ -71,8 +119,9 @@ def build_feature_matrix(data, embeddings, hmm_probs, macro, labels):
         mac = macro.loc[t, mac_cols].values.astype(np.float32) if (macro is not None and t in macro.index) else np.zeros(7, np.float32)
         pos = ret_idx.get_loc(t) if t in ret_idx else -1
         lb  = data['returns'].iloc[pos-LOOKBACK:pos][cfg.ASSETS].values.flatten().astype(np.float32) if pos >= LOOKBACK else np.zeros(LOOKBACK * _N_ETF, np.float32)
-        feat = np.concatenate([emb, hmm, mac, lb])
-        assert feat.shape[0] == INPUT_DIM
+        mom  = compute_momentum_features(data['returns'], t, ret_idx)
+        feat = np.concatenate([emb, hmm, mac, lb, mom])
+        assert feat.shape[0] == INPUT_DIM, f"dim={feat.shape[0]} expected {INPUT_DIM}" 
         X.append(feat); y.append(int(labels.loc[t])); dates.append(t)
     return np.array(X, np.float32), np.array(y, np.int64), dates
 
