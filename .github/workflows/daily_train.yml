@@ -42,3 +42,6 @@ jobs:
 
       - name: Run ERL
         run: python erl_train.py
+
+      - name: Run classifier training (Option B)
+        run: python classifier_train.py
