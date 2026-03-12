@@ -25,7 +25,7 @@ MAX_EPOCHS = 40 if _CPU_MODE else 100
 LR         = 5e-4
 BATCH_SIZE = 128
 LOOKBACK   = 5
-N_CLASSES  = cfg.N_ASSETS          # 7
+N_CLASSES  = len(cfg.ASSETS)       # 6 — no CASH
 _N_ETF     = len(cfg.ASSETS)       # 6 (no CASH)
 INPUT_DIM  = cfg.TFT_EMBEDDING_DIM + cfg.HMM_N_STATES + 7 + (LOOKBACK * _N_ETF)  # 109
 D_MODEL    = 64
@@ -59,7 +59,7 @@ def build_labels(returns: pd.DataFrame, macro: pd.DataFrame) -> pd.Series:
     Label = index of best ETF next day by VOLATILITY-ADJUSTED return.
     Each asset return is divided by its 21-day rolling std to normalise
     for volatility — prevents high-vol assets (SLV) dominating labels.
-    CASH(6) if all vol-adjusted returns negative OR VIX>25.
+    Always picks best ETF by vol-adjusted return. No CASH class.
     """
     assets  = cfg.ASSETS
     # Compute 21-day rolling vol for each asset
@@ -68,18 +68,12 @@ def build_labels(returns: pd.DataFrame, macro: pd.DataFrame) -> pd.Series:
 
     labels = {}
     for i in range(len(returns) - 1):
-        today   = returns.index[i]
-        nxt     = returns.iloc[i + 1]
-        vix     = float(macro.loc[today, 'VIX']) if (macro is not None and today in macro.index and 'VIX' in macro.columns) else 0.0
-
+        today    = returns.index[i]
+        nxt      = returns.iloc[i + 1]
         raw_rets = np.array([float(nxt.get(a, 0.0)) for a in assets])
         vols     = rolling_vol.loc[today].values if today in rolling_vol.index else np.ones(len(assets))
-        adj_rets = raw_rets / vols   # vol-adjusted: same unit across all assets
-
-        if all(r < 0 for r in adj_rets) or vix > 25:
-            labels[today] = N_CLASSES - 1   # CASH
-        else:
-            labels[today] = int(np.argmax(adj_rets))
+        adj_rets = raw_rets / vols   # vol-adjusted
+        labels[today] = int(np.argmax(adj_rets))   # always pick best ETF, no CASH
     return pd.Series(labels, name='label')
 
 
@@ -234,7 +228,7 @@ def per_class_acc(model, loader):
                 m = y_b == c
                 correct[c] += (preds[m] == c).sum().item()
                 total[c]   += m.sum().item()
-    return {cfg.ALL_ASSETS[i]: round(float(correct[i]/max(total[i],1)), 3) for i in range(N_CLASSES)}
+    return {cfg.ASSETS[i]: round(float(correct[i]/max(total[i],1)), 3) for i in range(N_CLASSES)}
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
