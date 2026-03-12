@@ -45,16 +45,20 @@ def _push(local, repo, remote):
 
 # ── Labels ────────────────────────────────────────────────────────────────────
 
+FORWARD_DAYS = 5  # weekly rebalance target
+
 def build_labels(returns: pd.DataFrame, macro: pd.DataFrame) -> pd.Series:
-    """Label = argmax(vol-adjusted next-day return). Always an ETF, no CASH."""
+    """Label = argmax(vol-adjusted 5-day cumulative forward return). No CASH."""
     assets      = cfg.ASSETS
     rolling_vol = returns[assets].rolling(21).std().bfill().fillna(1e-4).clip(lower=1e-4)
     labels      = {}
-    for i in range(len(returns) - 1):
-        today    = returns.index[i]
-        nxt      = returns.iloc[i + 1]
-        raw      = np.array([float(nxt.get(a, 0.0)) for a in assets])
-        vols     = rolling_vol.loc[today].values if today in rolling_vol.index else np.ones(_N_ETF)
+    n = len(returns)
+    for i in range(n - FORWARD_DAYS):
+        today   = returns.index[i]
+        fwd     = returns[assets].iloc[i + 1 : i + 1 + FORWARD_DAYS]
+        cum_ret = (1 + fwd).prod() - 1
+        raw     = cum_ret.values.astype(np.float32)
+        vols    = rolling_vol.loc[today].values if today in rolling_vol.index else np.ones(_N_ETF)
         labels[today] = int(np.argmax(raw / vols))
     return pd.Series(labels, name='label')
 
