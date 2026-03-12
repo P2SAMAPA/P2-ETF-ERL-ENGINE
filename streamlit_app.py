@@ -290,12 +290,13 @@ def main():
     # SIGNAL
     # ══════════════════════════════════════════════════════════════════════════
     with tab1:
-        pick      = signal.get('pick', 'CASH')
-        conviction= signal.get('conviction', 0) or 0
-        rationale = signal.get('rationale', '—')
-        rname     = signal.get('regime_name','Unknown')
-        cp        = signal.get('crisis_prob') or 0
-        rs        = signal.get('rolling_sharpe') or 0
+        pick       = signal.get('pick', 'CASH')
+        conviction = signal.get('conviction', 0) or 0
+        rationale  = signal.get('rationale', '—')
+        rname      = signal.get('regime_name','Unknown')
+        cp         = signal.get('crisis_prob') or 0
+        rs         = signal.get('rolling_sharpe') or 0
+        sig_date   = signal.get('date', '—')
         pick_source= signal.get('pick_source', 'DDPG_ARGMAX')
         src_label  = '🧠 AI Classifier' if pick_source == 'CLASSIFIER' else '⚙️ DDPG Ensemble'
         if np.isnan(cp): cp=0
