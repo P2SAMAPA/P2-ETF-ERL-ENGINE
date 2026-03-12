@@ -21,7 +21,7 @@ from hmm_train import RegimeDetector
 from ensemble import EnsemblePolicy
 from memory import Rulebook
 from kelly import format_allocation
-from classifier_train import INPUT_DIM, N_CLASSES, LOOKBACK
+from classifier_train import INPUT_DIM, N_CLASSES, LOOKBACK, compute_momentum_features
 
 
 # ── Loader Helpers ─────────────────────────────────────────────────────────────
@@ -109,18 +109,21 @@ def load_classifier():
         return None
 
 
-def classifier_pick(clf_bundle, tft_embedding, hmm_probs_vec, macro_vec, lookback_returns):
+def classifier_pick(clf_bundle, tft_embedding, hmm_probs_vec, macro_vec,
+                    lookback_returns, momentum_features=None):
     """
     Run XGBoost classifier → single ETF pick + conviction.
     Returns (pick: str, conviction: float, probs: dict)
     """
     model, scaler = clf_bundle
     lb   = lookback_returns.flatten().astype(np.float32)
+    mom  = momentum_features if momentum_features is not None else np.zeros(72, np.float32)
     feat = np.concatenate([
         tft_embedding.astype(np.float32),
         hmm_probs_vec.astype(np.float32),
         macro_vec.astype(np.float32),
         lb,
+        mom,
     ]).reshape(1, -1)
 
     feat_scaled = scaler.transform(feat)
@@ -312,7 +315,10 @@ def main():
         else:
             lb = np.zeros((LOOKBACK, len(cfg.ASSETS)), dtype=np.float32)
 
-        clf_pick, clf_conv, clf_probs = classifier_pick(clf, tft_embedding, hmm_probs, mac_vec, lb)
+        # Momentum features
+        mom = compute_momentum_features(data['returns'], today_ts, rets.index)
+
+        clf_pick, clf_conv, clf_probs = classifier_pick(clf, tft_embedding, hmm_probs, mac_vec, lb, mom)
 
         # No CASH override — always pick highest conviction ETF
 
