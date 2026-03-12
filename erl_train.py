@@ -280,7 +280,7 @@ def run_erl_loop(
     ep_len   = 252   # one year per episode
 
     # Compute HMM labels for all training dates
-    hmm_feats  = compute_hmm_features(data['prices'], data['benchmark'])
+    hmm_feats = load_or_compute_hmm_features(data)
     X_all      = detector.scaler.transform(
                      hmm_feats.reindex(train_dates).dropna()
                  ).values
@@ -497,7 +497,7 @@ def main():
     detector = RegimeDetector.load(det_path)
 
     # Attach hmm_probs to data dict for episode building
-    hmm_feats  = compute_hmm_features(data['prices'], data['benchmark'])
+    hmm_feats = load_or_compute_hmm_features(data)
     X_all      = detector.scaler.transform(hmm_feats).values
     probs_arr  = detector.model.predict_proba(X_all)
     data['hmm_probs'] = pd.DataFrame(
