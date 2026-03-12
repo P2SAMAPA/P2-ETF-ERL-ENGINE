@@ -92,40 +92,42 @@ def append_and_trim(history, signal):
 # ── Classifier Inference ───────────────────────────────────────────────────────
 
 def load_classifier():
-    """Load ETF classifier from HF if available."""
+    """Load XGBoost ETF classifier + scaler from HF if available."""
     try:
-        path  = _hf_download('models/etf_classifier.pt', cfg.HF_MODELS_REPO)
-        model = ETFClassifier(INPUT_DIM, D_MODEL, N_HEADS, N_LAYERS, N_CLASSES)
-        model.load_state_dict(torch.load(path, map_location='cpu'))
-        model.eval()
-        print("[predict] ETF classifier loaded ✓")
-        return model
+        import pickle
+        model_path  = _hf_download('models/etf_classifier.pkl', cfg.HF_MODELS_REPO)
+        scaler_path = _hf_download('models/clf_scaler.pkl',     cfg.HF_MODELS_REPO)
+        with open(model_path,  'rb') as f: model  = pickle.load(f)
+        with open(scaler_path, 'rb') as f: scaler = pickle.load(f)
+        print("[predict] XGBoost ETF classifier loaded ✓")
+        return (model, scaler)
     except Exception as e:
         print(f"[predict] Classifier not available ({e}) — using DDPG fallback")
         return None
 
 
-def classifier_pick(model, tft_embedding, hmm_probs_vec, macro_vec, lookback_returns):
+def classifier_pick(clf_bundle, tft_embedding, hmm_probs_vec, macro_vec, lookback_returns):
     """
-    Run classifier forward pass → single ETF pick + conviction.
+    Run XGBoost classifier → single ETF pick + conviction.
     Returns (pick: str, conviction: float, probs: dict)
     """
-    lb = lookback_returns.flatten().astype(np.float32)
+    model, scaler = clf_bundle
+    lb   = lookback_returns.flatten().astype(np.float32)
     feat = np.concatenate([
         tft_embedding.astype(np.float32),
         hmm_probs_vec.astype(np.float32),
         macro_vec.astype(np.float32),
         lb,
-    ])
-    x     = torch.tensor(feat, dtype=torch.float32).unsqueeze(0)
-    probs = model.predict_proba(x).squeeze(0).numpy()
+    ]).reshape(1, -1)
+
+    feat_scaled = scaler.transform(feat)
+    probs       = model.predict_proba(feat_scaled)[0]   # shape (6,)
 
     best_idx   = int(np.argmax(probs))
     conviction = float(probs[best_idx])
-    pick       = cfg.ALL_ASSETS[best_idx]
-
-    prob_dict = {a: round(float(p), 4) for a, p in zip(cfg.ASSETS, probs)}
-    return pick, conviction, prob_dict
+    pick       = cfg.ASSETS[best_idx]
+    prob_dict  = {a: round(float(p), 4) for a, p in zip(cfg.ASSETS, probs)}
+    return pick, conviction, prob_dictct
 
 
 # ── Signal Construction ────────────────────────────────────────────────────────
