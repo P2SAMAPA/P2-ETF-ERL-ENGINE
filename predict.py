@@ -117,7 +117,7 @@ def classifier_pick(clf_bundle, tft_embedding, hmm_probs_vec, macro_vec,
     """
     model, scaler = clf_bundle
     lb   = lookback_returns.flatten().astype(np.float32)
-    mom  = momentum_features if momentum_features is not None else np.zeros(72, np.float32)
+    mom  = momentum_features if momentum_features is not None else np.zeros(54, np.float32)
     feat = np.concatenate([
         tft_embedding.astype(np.float32),
         hmm_probs_vec.astype(np.float32),
