@@ -56,5 +56,47 @@ def main():
     )
     print(f"[purge] ✅ Pushed clean history ({len(clean)} entries) → {cfg.HF_RESULTS_REPO}")
 
+    # ── Purge rulebook duplicates ──────────────────────────────────────────────
+    print("\n[purge] Cleaning rulebook...")
+    rb_path = hf_hub_download(
+        repo_id=cfg.HF_RESULTS_REPO, filename='results/rulebook.json',
+        repo_type='dataset', token=cfg.HF_TOKEN, force_download=True
+    )
+    with open(rb_path) as f:
+        rulebook = json.load(f)
+
+    rules = rulebook if isinstance(rulebook, list) else rulebook.get('rules', [])
+    print(f"[purge] Rulebook: {len(rules)} entries before dedup")
+
+    # Keep only one rule per (action + regime_name) combination — best improvement
+    seen = {}
+    for r in rules:
+        action      = r.get('action', '')
+        regime_name = r.get('regime_name', r.get('regime_id', ''))
+        key         = f"{action}|{regime_name}"
+        improvement = r.get('improvement', 0)
+        if key not in seen or improvement > seen[key].get('improvement', 0):
+            seen[key] = r
+
+    clean_rules = sorted(seen.values(), key=lambda x: -x.get('improvement', 0))
+    print(f"[purge] Rulebook: {len(clean_rules)} entries after dedup")
+
+    if isinstance(rulebook, list):
+        clean_rulebook = clean_rules
+    else:
+        clean_rulebook = {**rulebook, 'rules': clean_rules}
+
+    rb_out = os.path.join(cfg.LOCAL_TMP, 'rulebook.json')
+    with open(rb_out, 'w') as f:
+        json.dump(clean_rulebook, f, indent=2)
+
+    HfApi(token=cfg.HF_TOKEN).upload_file(
+        path_or_fileobj=rb_out,
+        path_in_repo='results/rulebook.json',
+        repo_id=cfg.HF_RESULTS_REPO,
+        repo_type='dataset',
+    )
+    print(f"[purge] ✅ Pushed clean rulebook ({len(clean_rules)} rules)")
+
 if __name__ == '__main__':
     main()
