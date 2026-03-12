@@ -70,6 +70,13 @@ class Rulebook:
             self.total_rejected += 1
             return False
 
+        # Deduplicate — reject if identical action+regime already stored
+        action     = rule.get('action', '')
+        regime_id  = rule.get('regime_id', -1)
+        if any(r.get('action') == action and r.get('regime_id') == regime_id
+               for r in self.rules):
+            return False  # duplicate rule, skip
+
         # Enrich rule with storage metadata
         enriched = {
             **rule,
