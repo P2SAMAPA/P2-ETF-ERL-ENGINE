@@ -23,21 +23,28 @@ def main():
     # Keep only valid entries
     clean = []
     for s in history:
-        date = s.get('date','')
-        pick = s.get('pick') or s.get('top_asset')
-        has_return = s.get('portfolio_return') is not None
+        date       = s.get('date','')
+        pick       = s.get('pick') or s.get('top_asset')
+        port_ret   = s.get('portfolio_return')
+        scored_at  = s.get('scored_at', '')
         is_scored  = s.get('scored', False)
 
-        # Must have valid pick, valid date, and if scored must have real return
+        # Must have valid pick
         if not pick or pick == 'N/A':
             print(f"  REMOVE {date}: no valid pick")
             continue
+        # Must be in live period
         if date < '2025-01-01':
             print(f"  REMOVE {date}: before live start")
             continue
-        if is_scored and not has_return:
-            print(f"  REMOVE {date}: marked scored but no return")
-            continue
+        # If scored, must have been scored recently (after 2026-03-10) with real return
+        if is_scored:
+            if port_ret is None:
+                print(f"  REMOVE {date}: scored but no return value")
+                continue
+            if scored_at < '2026-03-10':
+                print(f"  REMOVE {date}: scored_at={scored_at[:10]} too old — ghost entry")
+                continue
         clean.append(s)
 
     print(f"[purge] Keeping {len(clean)} of {len(history)} entries")
