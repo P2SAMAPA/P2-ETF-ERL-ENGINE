@@ -84,6 +84,9 @@ def load_signal_history():
         return []
 
 def append_and_trim(history, signal):
+    # Replace existing entry for same date rather than appending duplicate
+    today = signal.get('date', '')
+    history = [s for s in history if s.get('date') != today]
     history.append(signal)
     return history[-cfg.MAX_HISTORY_RECORDS:]
 
