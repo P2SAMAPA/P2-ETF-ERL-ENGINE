@@ -31,7 +31,8 @@ LR         = 3e-4
 BATCH_SIZE = 64
 LOOKBACK   = 5          # days of return history in state
 N_CLASSES  = cfg.N_ASSETS  # 7
-INPUT_DIM  = cfg.TFT_EMBEDDING_DIM + cfg.HMM_N_STATES + 7 + (LOOKBACK * cfg.N_ASSETS)  # 64+8+7+35=114
+_N_ETF     = len(cfg.ASSETS)   # 6 (excludes CASH)
+INPUT_DIM  = cfg.TFT_EMBEDDING_DIM + cfg.HMM_N_STATES + 7 + (LOOKBACK * _N_ETF)  # 64+8+7+30=109
 D_MODEL    = 128
 N_HEADS    = 4
 N_LAYERS   = 2
@@ -128,10 +129,10 @@ def build_features_and_labels(
             mac = macro.loc[t, ['TNX','DXY','CORP_SPREAD','HY_SPREAD',
                                  'VIX','T10Y2Y','TBILL_3M']].values.astype(np.float32)
 
-        # Lookback returns (LOOKBACK × N_ASSETS = 35)
+        # Lookback returns (LOOKBACK × _N_ETF = 30)
         t_pos = data['returns'].index.get_loc(t) if t in data['returns'].index else -1
         if t_pos < LOOKBACK:
-            lb = np.zeros(LOOKBACK * cfg.N_ASSETS, dtype=np.float32)
+            lb = np.zeros(LOOKBACK * _N_ETF, dtype=np.float32)
         else:
             lb_slice = data['returns'].iloc[t_pos - LOOKBACK:t_pos][assets].values
             lb = lb_slice.flatten().astype(np.float32)
