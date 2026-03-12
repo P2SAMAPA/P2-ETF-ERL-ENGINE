@@ -240,6 +240,7 @@ def main():
     # 2. HMM regime
     det_path = _hf_download("models/regime_detector.pkl", cfg.HF_MODELS_REPO)
     detector = RegimeDetector.load(det_path)
+    detector.regime_names = cfg.REGIME_NAMES   # always use config as source of truth
     hmm_feats = load_or_compute_hmm_features(data)
     regime_output = detector.predict(hmm_feats.tail(cfg.TFT_CONTEXT_LENGTH))
     # Debug: print full regime probs
