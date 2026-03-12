@@ -71,9 +71,10 @@ class Rulebook:
             return False
 
         # Deduplicate — reject if identical action+regime already stored
-        action     = rule.get('action', '')
-        regime_id  = rule.get('regime_id', -1)
-        if any(r.get('action') == action and r.get('regime_id') == regime_id
+        action      = rule.get('action', '')
+        regime_name = rule.get('regime_name', str(rule.get('regime_id', '')))
+        if any(r.get('action') == action and
+               r.get('regime_name', str(r.get('regime_id',''))) == regime_name
                for r in self.rules):
             return False  # duplicate rule, skip
 
