@@ -87,22 +87,63 @@ def append_and_trim(history, signal):
 
 # ── Signal Construction ────────────────────────────────────────────────────────
 
+def pick_etf(ensemble_output, regime_output, active_rules):
+    """
+    Convert DDPG weight vector to a single ETF pick.
+    - CASH if regime is Acute Crisis
+    - Otherwise: argmax of ensemble final weights
+    - Conviction = max weight (0-1), adjusted by rule nudges
+    - If conviction < 0.20 → CASH (policies couldn't agree)
+    """
+    # Hard override: Acute Crisis only
+    regime_name = regime_output['regime_name']
+    if regime_name == 'Acute Crisis':
+        return 'CASH', 1.0, 'Acute Crisis regime — defensive override'
+
+    weights = ensemble_output['final_weights']   # shape (N_ASSETS,)
+    assets  = cfg.ALL_ASSETS                     # includes CASH last
+
+    # Apply rule nudges: if a rule says reduce X, penalise its weight
+    nudged = weights.copy()
+    for rule in active_rules:
+        action = rule.get('action', '')
+        for i, asset in enumerate(assets):
+            if asset != 'CASH' and f'Reduce {asset}' in action:
+                nudged[i] *= 0.5   # halve weight of penalised asset
+
+    nudged = nudged / (nudged.sum() + 1e-8)
+
+    best_idx    = int(np.argmax(nudged))
+    conviction  = float(nudged[best_idx])
+    pick        = assets[best_idx]
+
+    # Low conviction → CASH
+    if conviction < 0.20:
+        return 'CASH', conviction, f'Low conviction ({conviction:.0%}) — no clear pick'
+
+    reason = f'{pick} has highest ensemble weight ({conviction:.0%})'
+    if active_rules:
+        reason += f' | {len(active_rules)} active rule(s) applied'
+
+    return pick, conviction, reason
+
+
 def build_signal(today_str, regime_output, ensemble_output,
                  rolling_sharpe, current_weights, active_rules, basis='live'):
-    allocation = ensemble_output['allocation']
-    kelly_info = ensemble_output['kelly_info']
-    gates      = ensemble_output['gates']
-    new_w      = ensemble_output['final_weights']
-    turnover   = float(np.abs(new_w - current_weights).sum())
-    top_asset  = max(allocation, key=allocation.get) if allocation else 'CASH'
+    pick, conviction, rationale = pick_etf(ensemble_output, regime_output, active_rules)
+
+    # Previous pick for comparison
+    prev_pick = current_weights  # we'll derive from history in main
 
     return {
         'date':              today_str,
         'generated_at':      datetime.utcnow().isoformat(),
         'basis':             basis,
-        'allocation':        allocation,
-        'top_asset':         top_asset,
-        'turnover':          turnover,
+        # ── Core output ──
+        'pick':              pick,
+        'conviction':        round(conviction, 4),
+        'rationale':         rationale,
+        # ── Regime ──
         'regime':            regime_output['regime'],
         'regime_name':       regime_output['regime_name'],
         'crisis_prob':       regime_output['crisis_prob'],
@@ -111,19 +152,19 @@ def build_signal(today_str, regime_output, ensemble_output,
             str(k): float(regime_output['probs'][k])
             for k in range(cfg.HMM_N_STATES)
         },
-        'gate_A':            gates['A'],
-        'gate_B':            gates['B'],
-        'gate_C':            gates['C'],
-        'kelly_fraction':    kelly_info['fraction'],
-        'kelly_regime_scalar':    kelly_info['regime_scalar'],
-        'kelly_agreement_scalar': kelly_info['agreement_scalar'],
-        'kelly_sharpe_scalar':    kelly_info['sharpe_scalar'],
+        # ── Ensemble internals (kept for diagnostics) ──
+        'raw_weights':       {a: round(float(w), 4)
+                              for a, w in zip(cfg.ALL_ASSETS, ensemble_output['final_weights'])},
+        'gate_A':            ensemble_output['gates']['A'],
+        'gate_B':            ensemble_output['gates']['B'],
+        'gate_C':            ensemble_output['gates']['C'],
         'rolling_sharpe':    rolling_sharpe,
         'n_active_rules':    len(active_rules),
         'active_rule_summary': [
             r.get('action', r.get('rationale', ''))[:80]
             for r in active_rules[:3]
         ],
+        # ── Scoring (filled by score.py) ──
         'portfolio_return':  None,
         'benchmark_return':  None,
         'excess_return':     None,
@@ -208,11 +249,9 @@ def main():
 
     # 10. Summary
     print(f"\n{'='*50}")
-    print(f"Signal: {today_str} | {signal['regime_name']}")
-    print(f"Kelly:  {signal['kelly_fraction']:.3f} | "
-          f"Turnover: {signal['turnover']:.1%}")
-    for asset, w in list(signal['allocation'].items())[:4]:
-        print(f"  {asset:<6}: {w:.1%}")
+    print(f"Signal:     {today_str} | {signal['regime_name']}")
+    print(f"Pick:       {signal['pick']}  (conviction={signal['conviction']:.0%})")
+    print(f"Rationale:  {signal['rationale']}")
     print(f"{'='*50}")
     print("[predict] Done")
     return signal
