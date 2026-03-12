@@ -45,21 +45,29 @@ def _push(local, repo, remote):
 
 # ── Labels ────────────────────────────────────────────────────────────────────
 
-FORWARD_DAYS = 5  # weekly rebalance target
+FORWARD_WINDOWS = [1, 3, 5]  # days to look forward
 
 def build_labels(returns: pd.DataFrame, macro: pd.DataFrame) -> pd.Series:
-    """Label = argmax(vol-adjusted 5-day cumulative forward return). No CASH."""
-    assets      = cfg.ASSETS
-    rolling_vol = returns[assets].rolling(21).std().bfill().fillna(1e-4).clip(lower=1e-4)
-    labels      = {}
-    n = len(returns)
-    for i in range(n - FORWARD_DAYS):
-        today   = returns.index[i]
-        fwd     = returns[assets].iloc[i + 1 : i + 1 + FORWARD_DAYS]
-        cum_ret = (1 + fwd).prod() - 1
-        raw     = cum_ret.values.astype(np.float32)
-        vols    = rolling_vol.loc[today].values if today in rolling_vol.index else np.ones(_N_ETF)
-        labels[today] = int(np.argmax(raw / vols))
+    """
+    Label = ETF with highest average normalised return across 1d, 3d, 5d windows.
+    Each window is cross-sectionally normalised (z-score across ETFs) so windows
+    are comparable regardless of scale. No vol adjustment.
+    """
+    assets = cfg.ASSETS
+    n      = len(returns)
+    max_w  = max(FORWARD_WINDOWS)
+    labels = {}
+    for i in range(n - max_w):
+        today  = returns.index[i]
+        scores = np.zeros(_N_ETF, dtype=np.float32)
+        for w in FORWARD_WINDOWS:
+            fwd     = returns[assets].iloc[i + 1 : i + 1 + w]
+            cum_ret = ((1 + fwd).prod() - 1).values.astype(np.float32)
+            # cross-sectional z-score so 1d/3d/5d are on same scale
+            mu  = cum_ret.mean()
+            std = cum_ret.std() + 1e-8
+            scores += (cum_ret - mu) / std
+        labels[today] = int(np.argmax(scores))
     return pd.Series(labels, name='label')
 
 
