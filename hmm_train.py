@@ -260,8 +260,7 @@ def compute_regime_stats(
         Index = regime names
         Columns = assets + ['count', 'pct_time']
     """
-    daily_ret = returns.pct_change() if returns.columns[0] in cfg.ASSETS \
-                else returns
+    daily_ret = returns  # returns are already daily returns
 
     stats_rows = []
     for k in range(cfg.HMM_N_STATES):
@@ -277,9 +276,11 @@ def compute_regime_stats(
         }
         for asset in cfg.ASSETS:
             if asset in regime_ret.columns:
-                row[f'{asset}_mean_ret'] = float(
-                    regime_ret[asset].mean() * 252
-                )  # annualised
+                daily_mean = regime_ret[asset].mean()
+                if np.isfinite(daily_mean) and abs(daily_mean) < 0.5:
+                    row[f'{asset}_mean_ret'] = round(float(daily_mean * 252 * 100), 2)
+                else:
+                    row[f'{asset}_mean_ret'] = None  # skip bad values
         stats_rows.append(row)
 
     stats_df = pd.DataFrame(stats_rows).set_index('regime')
