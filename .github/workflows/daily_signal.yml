@@ -7,7 +7,12 @@ name: Daily Signal
 on:
   schedule:
     - cron: '0 22 * * 1-5'   # Mon–Fri 22:00 UTC
-  workflow_dispatch:           # manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      purge_history:
+        description: 'Purge stale signal history first? (yes/no)'
+        required: false
+        default: 'no'
 
 jobs:
   signal:
@@ -26,6 +31,15 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Purge stale history (optional)
+        if: ${{ github.event.inputs.purge_history == 'yes' }}
+        env:
+          HF_TOKEN:        ${{ secrets.HF_TOKEN }}
+          HF_SOURCE_REPO:  ${{ secrets.HF_SOURCE_REPO }}
+          HF_MODELS_REPO:  ${{ secrets.HF_MODELS_REPO }}
+          HF_RESULTS_REPO: ${{ secrets.HF_RESULTS_REPO }}
+        run: python purge_history.py
 
       - name: Score yesterday's signal
         env:
