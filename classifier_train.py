@@ -29,8 +29,8 @@ LOOKBACK   = 5
 N_CLASSES  = len(cfg.ASSETS)   # 6 — TLT LQD HYG VNQ GLD SLV
 _N_ETF     = len(cfg.ASSETS)       # 6
 _MOM_WINS  = [1, 5, 21, 63]        # momentum lookback windows
-_MOM_FEATS = len(_MOM_WINS) * _N_ETF * 3  # returns + ranks + consistency = 72
-INPUT_DIM  = cfg.TFT_EMBEDDING_DIM + cfg.HMM_N_STATES + 7 + (LOOKBACK * _N_ETF) + _MOM_FEATS  # 64+8+7+30+72=181
+_MOM_FEATS = len(_MOM_WINS) * _N_ETF * 2 + _N_ETF  # returns(24) + ranks(24) + consistency(6) = 54
+INPUT_DIM  = cfg.TFT_EMBEDDING_DIM + cfg.HMM_N_STATES + 7 + (LOOKBACK * _N_ETF) + _MOM_FEATS  # 64+8+7+30+54=163
 
 _CPU_MODE  = os.environ.get('REALM_CPU_MODE', '0') == '1'
 
