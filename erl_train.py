@@ -27,7 +27,7 @@ warnings.filterwarnings('ignore')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as cfg
 from loader import load_all
-from features import compute_hmm_features
+from features import compute_hmm_features, load_or_compute_hmm_features, FeatureScaler
 from hmm_train import RegimeDetector
 from environment import PortfolioEnv, ERLEpisode, compute_benchmark_return
 from ddpg_train import DDPGAgent, load_training_data
