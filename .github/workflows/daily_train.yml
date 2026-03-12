@@ -26,10 +26,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt xgboost>=2.0.0
 
       - name: Train HMM
         run: python hmm_train.py
