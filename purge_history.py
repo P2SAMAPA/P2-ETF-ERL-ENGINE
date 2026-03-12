@@ -21,31 +21,24 @@ def main():
     print(f"[purge] Loaded {len(history)} history entries")
 
     # Keep only valid entries
-    clean = []
+    # Keep only the LATEST entry per date (most recent generated_at)
+    by_date = {}
     for s in history:
-        date       = s.get('date','')
-        pick       = s.get('pick') or s.get('top_asset')
-        port_ret   = s.get('portfolio_return')
-        scored_at  = s.get('scored_at', '')
-        is_scored  = s.get('scored', False)
-
-        # Must have valid pick
+        date = s.get('date', '')
+        pick = s.get('pick') or s.get('top_asset')
         if not pick or pick == 'N/A':
-            print(f"  REMOVE {date}: no valid pick")
             continue
-        # Must be in live period
         if date < '2025-01-01':
-            print(f"  REMOVE {date}: before live start")
             continue
-        # If scored, must have been scored recently (after 2026-03-10) with real return
-        if is_scored:
-            if port_ret is None:
-                print(f"  REMOVE {date}: scored but no return value")
-                continue
-            if scored_at < '2026-03-10':
-                print(f"  REMOVE {date}: scored_at={scored_at[:10]} too old — ghost entry")
-                continue
-        clean.append(s)
+        # Keep latest generated_at per date
+        existing = by_date.get(date)
+        if existing is None or s.get('generated_at','') > existing.get('generated_at',''):
+            by_date[date] = s
+
+    clean = list(by_date.values())
+    clean.sort(key=lambda x: x.get('date',''))
+    for s in clean:
+        print(f"  KEEP {s['date']}: pick={s.get('pick') or s.get('top_asset')} scored={s.get('scored')}")
 
     print(f"[purge] Keeping {len(clean)} of {len(history)} entries")
 
