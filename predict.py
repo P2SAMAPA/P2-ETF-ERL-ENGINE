@@ -127,7 +127,7 @@ def classifier_pick(clf_bundle, tft_embedding, hmm_probs_vec, macro_vec, lookbac
     conviction = float(probs[best_idx])
     pick       = cfg.ASSETS[best_idx]
     prob_dict  = {a: round(float(p), 4) for a, p in zip(cfg.ASSETS, probs)}
-    return pick, conviction, prob_dictct
+    return pick, conviction, prob_dict
 
 
 # ── Signal Construction ────────────────────────────────────────────────────────
