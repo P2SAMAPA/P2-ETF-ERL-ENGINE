@@ -87,7 +87,11 @@ TFT_LSTM_LAYERS         = 2
 TFT_CONTEXT_LENGTH      = H
 TFT_PREDICTION_LENGTH   = 1
 TFT_EMBEDDING_DIM       = 64
-TFT_MAX_EPOCHS          = 30
+# ── CPU mode (GitHub Actions) — reduced epochs to fit 6hr limit ───────────
+import os as _os
+_CPU_MODE = _os.environ.get('REALM_CPU_MODE', '0') == '1'
+
+TFT_MAX_EPOCHS          = 10 if _CPU_MODE else 30
 TFT_BATCH_SIZE          = 64
 TFT_LR                  = 1e-3
 TFT_EARLY_STOP_PAT      = 5
@@ -104,7 +108,7 @@ DDPG_GAMMA              = 0.99
 DDPG_TAU                = 0.005
 DDPG_BUFFER_SIZE        = 10_000
 DDPG_BATCH_SIZE         = 64
-DDPG_MAX_EPOCHS         = 100
+DDPG_MAX_EPOCHS         = 30 if _CPU_MODE else 100
 DDPG_EARLY_STOP_PAT     = 15
 DDPG_OU_THETA           = 0.15
 DDPG_OU_SIGMA           = 0.2
