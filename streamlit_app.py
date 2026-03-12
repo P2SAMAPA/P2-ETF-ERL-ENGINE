@@ -471,9 +471,9 @@ def main():
             c1,c2,c3,c4 = st.columns(4)
             for col, label, val, gp in [
                 (c1,"Ann. Excess Return", perf.get('ann_excess_return'), True),
-                (c2,"Excess Sharpe",      perf.get('excess_sharpe'),     None),
+                (c2,"Excess Sharpe",      perf.get('excess_sharpe') if perf.get('n_scored',0)>=5 else None, None),
                 (c3,"Win Rate vs AGG",    perf.get('win_rate_vs_bench'), True),
-                (c4,"Max Drawdown",       perf.get('max_drawdown'),      False),
+                (c4,"Max Drawdown",       perf.get('max_drawdown') if perf.get('n_scored',0)>=5 else None, False),
             ]:
                 with col:
                     if label=="Excess Sharpe":
@@ -487,7 +487,8 @@ def main():
                         <div class="card-value {c}">{disp}</div>
                     </div>""", unsafe_allow_html=True)
         else:
-            st.info("Performance metrics appear after the first scored trading day.")
+            n = perf.get('n_scored', 0) if perf else 0
+            st.info(f"Only {n} scored day(s) so far — Sharpe and drawdown metrics require at least 5 days.")
 
         ec = chart_equity(history)
         if ec:
