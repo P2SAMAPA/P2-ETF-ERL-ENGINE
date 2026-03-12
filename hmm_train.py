@@ -448,13 +448,15 @@ def main():
     characteristics = characterise_regimes(
         model, scaler, list(hmm_feats.columns)
     )
-    regime_names = auto_name_regimes(characteristics)
+    auto_names   = auto_name_regimes(characteristics)
+    regime_names = cfg.REGIME_NAMES   # always use config — stable across runs
 
-    print("\n── Regime Characteristics ────────────────────")
+    print("\n── Regime Characteristics (auto → config name) ────────────────────")
     for k, name in regime_names.items():
         count = (labels == k).sum()
         pct   = count / len(labels) * 100
-        print(f"  Regime {k} ({name:20s}): {count:4d} days ({pct:.1f}%)")
+        auto  = auto_names.get(k, '?')
+        print(f"  Regime {k} ({name:20s}): {count:4d} days ({pct:.1f}%)  [auto: {auto}]")
 
     # ── 7. Regime stats ───────────────────────────────────────────────────────
     regime_stats = compute_regime_stats(
