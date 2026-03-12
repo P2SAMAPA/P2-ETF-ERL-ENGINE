@@ -30,7 +30,7 @@ warnings.filterwarnings('ignore')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as cfg
 from loader import load_all
-from features import compute_hmm_features, FeatureScaler
+from features import compute_hmm_features, load_or_compute_hmm_features, FeatureScaler
 from hmm_train import RegimeDetector
 from environment import PortfolioEnv, ReplayBuffer, OUNoise
 
@@ -431,10 +431,13 @@ def load_training_data() -> dict:
         )
         embeddings = pd.read_parquet(cache_path)
         embeddings.index = pd.to_datetime(embeddings.index)
-        print(f"[DDPG] TFT embeddings loaded: {embeddings.shape}")
+        # Align embeddings to returns index
+        common = embeddings.index.intersection(data['returns'].index)
+        embeddings = embeddings.reindex(common)
+        print(f"[DDPG] TFT embeddings loaded: {embeddings.shape}, common days: {len(common)}")
     except Exception as e:
         print(f"[DDPG] TFT cache not found ({e}) — using random embeddings")
-        idx = data['prices'].index
+        idx = data['returns'].index
         embeddings = pd.DataFrame(
             np.random.randn(len(idx), cfg.TFT_EMBEDDING_DIM) * 0.1,
             index   = idx,
@@ -452,7 +455,7 @@ def load_training_data() -> dict:
             force_download = True,
         )
         detector  = RegimeDetector.load(det_path)
-        hmm_feats = compute_hmm_features(data['prices'], data['benchmark'])
+        hmm_feats = load_or_compute_hmm_features(data)
         scaler    = detector.scaler
         X_all     = scaler.transform(hmm_feats).values
         labels    = pd.Series(
@@ -466,10 +469,14 @@ def load_training_data() -> dict:
             index   = hmm_feats.index,
             columns = list(range(cfg.HMM_N_STATES)),
         )
+        # Align to returns index
+        common2 = hmm_probs.index.intersection(data['returns'].index)
+        hmm_probs = hmm_probs.reindex(common2)
+        labels    = labels.reindex(common2)
         print(f"[DDPG] HMM labels loaded: {len(labels)} days")
     except Exception as e:
         print(f"[DDPG] HMM not found ({e}) — using uniform probs")
-        idx       = data['prices'].index
+        idx       = data['returns'].index
         labels    = pd.Series(0, index=idx, name='regime')
         hmm_probs = pd.DataFrame(
             np.ones((len(idx), cfg.HMM_N_STATES)) / cfg.HMM_N_STATES,
@@ -494,25 +501,29 @@ def build_env(
     """
     Build a PortfolioEnv for a specific date range and optional regime filter.
     """
+    base_idx = data['returns'].index
     mask = (
-        (data['prices'].index >= start_date) &
-        (data['prices'].index <= end_date)
+        (base_idx >= start_date) &
+        (base_idx <= end_date)
     )
     if regime_filter is not None:
         regime_mask = data['labels'].isin(regime_filter)
-        regime_mask = regime_mask.reindex(data['prices'].index).fillna(False)
+        regime_mask = regime_mask.reindex(base_idx).fillna(False)
         mask        = mask & regime_mask
 
-    idx = data['prices'].index[mask]
+    idx = base_idx[mask]
     if len(idx) < cfg.TFT_CONTEXT_LENGTH + 10:
         # Not enough regime-specific data — fall back to full date range
         print(f"[DDPG] Regime filter too sparse "
               f"({len(idx)} days) — using full period")
         mask = (
-            (data['prices'].index >= start_date) &
-            (data['prices'].index <= end_date)
+            (base_idx >= start_date) &
+            (base_idx <= end_date)
         )
-        idx = data['prices'].index[mask]
+        idx = base_idx[mask]
+
+    # Drop dates where embeddings are NaN (start later than returns)
+    idx = idx.intersection(data['embeddings'].dropna().index)
 
     env = PortfolioEnv(
         embeddings    = data['embeddings'].reindex(idx),
