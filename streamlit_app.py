@@ -290,93 +290,91 @@ def main():
     # SIGNAL
     # ══════════════════════════════════════════════════════════════════════════
     with tab1:
-        rname = signal.get('regime_name','Unknown')
-        kf    = signal.get('kelly_fraction') or 0
-        cp    = signal.get('crisis_prob') or 0
-        rs    = signal.get('rolling_sharpe') or 0
-        if np.isnan(kf): kf=0
+        pick      = signal.get('pick', 'CASH')
+        conviction= signal.get('conviction', 0) or 0
+        rationale = signal.get('rationale', '—')
+        rname     = signal.get('regime_name','Unknown')
+        cp        = signal.get('crisis_prob') or 0
+        rs        = signal.get('rolling_sharpe') or 0
+        sig_date  = signal.get('date','—')
         if np.isnan(cp): cp=0
         if np.isnan(rs): rs=0
 
-        c1,c2,c3,c4 = st.columns(4)
-        with c1:
-            st.markdown(f"""<div class="card">
-                <div class="card-label">Current Regime</div>
-                <div style="font-size:24px;font-weight:700;color:#111111">{rname}</div>
-                {regime_pill(rname)}
-            </div>""", unsafe_allow_html=True)
-        with c2:
-            kc = 'green' if kf>=0.2 else 'amber' if kf>=0.1 else 'red'
-            st.markdown(f"""<div class="card">
-                <div class="card-label">Kelly Fraction</div>
-                <div class="card-value {kc}">{kf:.3f}</div>
-            </div>""", unsafe_allow_html=True)
-        with c3:
-            cc = 'red' if cp>0.4 else 'amber' if cp>0.2 else 'green'
-            st.markdown(f"""<div class="card">
-                <div class="card-label">Crisis Probability</div>
-                <div class="card-value {cc}">{cp:.1%}</div>
-            </div>""", unsafe_allow_html=True)
-        with c4:
-            rc = 'green' if rs>=1 else 'amber' if rs>=0 else 'red'
-            st.markdown(f"""<div class="card">
-                <div class="card-label">Rolling Sharpe</div>
-                <div class="card-value {rc}">{rs:.2f}</div>
-            </div>""", unsafe_allow_html=True)
+        # ── Big Pick Card ──────────────────────────────────────────────────
+        pick_color = ASSET_COLORS.get(pick, '#15803d')
+        is_cash    = pick == 'CASH'
+        cv_pct     = f"{conviction:.0%}"
+        cv_color   = '#15803d' if conviction >= 0.4 else '#b45309' if conviction >= 0.25 else '#dc2626'
 
-        st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="background:#ffffff;border:1.5px solid #e5e7eb;border-radius:16px;
+                    padding:36px 40px;margin-bottom:24px;display:flex;
+                    align-items:center;gap:40px;">
+            <div style="min-width:160px;text-align:center;">
+                <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;
+                            color:#6b7280;margin-bottom:8px">TODAY'S PICK</div>
+                <div style="font-size:72px;font-weight:900;letter-spacing:-2px;
+                            color:{pick_color};line-height:1">{pick}</div>
+                <div style="font-size:13px;color:#6b7280;margin-top:6px">{sig_date}</div>
+            </div>
+            <div style="flex:1;border-left:1.5px solid #e5e7eb;padding-left:36px;">
+                <div style="display:flex;gap:40px;margin-bottom:20px;">
+                    <div>
+                        <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;
+                                    color:#6b7280;margin-bottom:4px">CONVICTION</div>
+                        <div style="font-size:36px;font-weight:800;color:{cv_color}">{cv_pct}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;
+                                    color:#6b7280;margin-bottom:4px">REGIME</div>
+                        <div style="font-size:20px;font-weight:700;color:#111111">{rname}</div>
+                        <div style="margin-top:6px">{regime_pill(rname)}</div>
+                    </div>
+                    <div>
+                        <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;
+                                    color:#6b7280;margin-bottom:4px">CRISIS PROB</div>
+                        <div style="font-size:36px;font-weight:800;
+                                    color:{'#dc2626' if cp>0.4 else '#b45309' if cp>0.2 else '#15803d'}">{cp:.1%}</div>
+                    </div>
+                </div>
+                <div style="font-size:14px;color:#374151;background:#f9fafb;
+                            border-radius:8px;padding:12px 16px;line-height:1.5">
+                    <span style="font-weight:700;color:#111">Rationale:</span> {rationale}
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ── Raw Weights + Ensemble Gates ───────────────────────────────────
         cl, cr = st.columns([1.3, 1])
 
         with cl:
-            st.markdown('<div class="sec-head">Portfolio Allocation</div>', unsafe_allow_html=True)
-            alloc = signal.get('allocation', {})
-            rows  = ''
-            for asset, w in sorted(alloc.items(), key=lambda x: -x[1]):
-                color = ASSET_COLORS.get(asset, '#15803d')
-                rows += f"""<div class="alloc-row">
-                    <span class="alloc-ticker">{asset}</span>
-                    <div class="alloc-bg">
-                        <div class="alloc-fill" style="width:{w*100:.1f}%;background:{color}"></div>
-                    </div>
-                    <span class="alloc-pct">{w*100:.1f}%</span>
-                </div>"""
-            st.markdown(rows, unsafe_allow_html=True)
-            turn = signal.get('turnover',0) or 0
-            top  = signal.get('top_asset','—')
-            date = signal.get('date','—')
+            st.markdown('<div class="sec-head">Ensemble Weights</div>', unsafe_allow_html=True)
+            raw_w = signal.get('raw_weights', {})
+            if raw_w:
+                rows = ''
+                for asset, w in sorted(raw_w.items(), key=lambda x: -x[1]):
+                    color    = ASSET_COLORS.get(asset, '#15803d')
+                    is_pick  = asset == pick
+                    border   = f'border:2px solid {color};' if is_pick else ''
+                    rows += f"""<div class="alloc-row" style="{border}border-radius:6px;padding:2px 6px">
+                        <span class="alloc-ticker" style="{'font-weight:900' if is_pick else ''}">{asset}</span>
+                        <div class="alloc-bg">
+                            <div class="alloc-fill" style="width:{w*100:.1f}%;background:{color}"></div>
+                        </div>
+                        <span class="alloc-pct">{w*100:.1f}%</span>
+                    </div>"""
+                st.markdown(rows, unsafe_allow_html=True)
             st.markdown(f"""<div style="font-size:13px;color:#888888;margin-top:14px;font-weight:500">
-                Turnover: {turn:.1%} &nbsp;·&nbsp; Top Asset: {top} &nbsp;·&nbsp; Signal Date: {date}
+                Rolling Sharpe: {rs:.2f} &nbsp;·&nbsp; Active Rules: {signal.get('n_active_rules',0)}
             </div>""", unsafe_allow_html=True)
 
         with cr:
-            st.markdown('<div class="sec-head">Kelly Sizing</div>', unsafe_allow_html=True)
-            rs_sc = signal.get('kelly_regime_scalar',0) or 0
-            ag_sc = signal.get('kelly_agreement_scalar',0) or 0
-            sh_sc = signal.get('kelly_sharpe_scalar',0) or 0
-            st.markdown(f"""<div class="kelly-grid">
-                <div class="kelly-item">
-                    <div class="kelly-name">Base</div>
-                    <div class="kelly-val">{cfg.KELLY_BASE_FRACTION:.2f}</div>
-                </div>
-                <div class="kelly-item">
-                    <div class="kelly-name">Regime ×</div>
-                    <div class="kelly-val">{rs_sc:.2f}</div>
-                </div>
-                <div class="kelly-item">
-                    <div class="kelly-name">Agreement ×</div>
-                    <div class="kelly-val">{ag_sc:.2f}</div>
-                </div>
-                <div class="kelly-item">
-                    <div class="kelly-name">Sharpe ×</div>
-                    <div class="kelly-val">{sh_sc:.2f}</div>
-                </div>
-            </div>""", unsafe_allow_html=True)
-
             gA = signal.get('gate_A',0) or 0
             gB = signal.get('gate_B',0) or 0
             gC = signal.get('gate_C',0) or 0
             st.markdown(f"""
-            <div class="sec-head" style="margin-top:28px">Ensemble Gates</div>
+            <div class="sec-head">Ensemble Gates</div>
             <div class="gate-row">
                 <div class="gate-item">
                     <div class="gate-label">A · Crisis</div>
@@ -392,13 +390,14 @@ def main():
                 </div>
             </div>""", unsafe_allow_html=True)
 
-        rules = signal.get('active_rule_summary', [])
-        if rules:
-            st.markdown('<div class="sec-head">Active Rules</div>', unsafe_allow_html=True)
-            for r in rules:
-                st.markdown(f"""<div class="rule-card">
-                    <div class="rule-body">{r}</div>
-                </div>""", unsafe_allow_html=True)
+            rules = signal.get('active_rule_summary', [])
+            if rules:
+                st.markdown('<div class="sec-head" style="margin-top:24px">Active Rules</div>',
+                            unsafe_allow_html=True)
+                for r in rules:
+                    st.markdown(f"""<div class="rule-card">
+                        <div class="rule-body">{r}</div>
+                    </div>""", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════════════════════
     # REGIME
