@@ -306,7 +306,7 @@ def main():
         if lb_end >= LOOKBACK:
             lb = rets.iloc[lb_end - LOOKBACK:lb_end].values.astype(np.float32)
         else:
-            lb = np.zeros((LOOKBACK, cfg.N_ASSETS - 1), dtype=np.float32)
+            lb = np.zeros((LOOKBACK, len(cfg.ASSETS)), dtype=np.float32)
 
         clf_pick, clf_conv, clf_probs = classifier_pick(clf, tft_embedding, hmm_probs, mac_vec, lb)
 
