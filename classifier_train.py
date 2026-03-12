@@ -55,18 +55,31 @@ def _push(local_path, repo_id, repo_path):
 # ── Labels ────────────────────────────────────────────────────────────────────
 
 def build_labels(returns: pd.DataFrame, macro: pd.DataFrame) -> pd.Series:
-    """Label = index of best ETF next day. CASH(6) if all negative or VIX>25."""
-    assets = cfg.ASSETS
+    """
+    Label = index of best ETF next day by VOLATILITY-ADJUSTED return.
+    Each asset return is divided by its 21-day rolling std to normalise
+    for volatility — prevents high-vol assets (SLV) dominating labels.
+    CASH(6) if all vol-adjusted returns negative OR VIX>25.
+    """
+    assets  = cfg.ASSETS
+    # Compute 21-day rolling vol for each asset
+    rolling_vol = returns[assets].rolling(21).std().fillna(method='bfill').fillna(1e-4)
+    rolling_vol = rolling_vol.clip(lower=1e-4)   # avoid div by zero
+
     labels = {}
     for i in range(len(returns) - 1):
         today   = returns.index[i]
         nxt     = returns.iloc[i + 1]
         vix     = float(macro.loc[today, 'VIX']) if (macro is not None and today in macro.index and 'VIX' in macro.columns) else 0.0
-        rets    = [float(nxt.get(a, 0.0)) for a in assets]
-        if all(r < 0 for r in rets) or vix > 25:
+
+        raw_rets = np.array([float(nxt.get(a, 0.0)) for a in assets])
+        vols     = rolling_vol.loc[today].values if today in rolling_vol.index else np.ones(len(assets))
+        adj_rets = raw_rets / vols   # vol-adjusted: same unit across all assets
+
+        if all(r < 0 for r in adj_rets) or vix > 25:
             labels[today] = N_CLASSES - 1   # CASH
         else:
-            labels[today] = int(np.argmax(rets))
+            labels[today] = int(np.argmax(adj_rets))
     return pd.Series(labels, name='label')
 
 
