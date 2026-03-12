@@ -269,8 +269,8 @@ def main():
             continue
         if pick == 'CASH':
             port_ret = 0.0
-        elif pick in actual_returns.index:
-            port_ret = float(actual_returns.loc[pick])
+        elif pick in actual_returns:
+            port_ret = float(actual_returns[pick])
         else:
             print(f"[score] Pick {pick} not in returns for {signal_date} — skipping")
             continue
