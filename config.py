@@ -119,7 +119,7 @@ ERL_REWARD_THRESHOLD    = 0.0        # reflect only when r(1) < threshold
 ERL_MIN_EXCESS_TO_STORE = 0.005      # 50bps gate to store reflection
 ERL_MAX_RULES           = 20         # rolling rulebook size
 ERL_REFLECTION_PROVIDER = "gemini"   # "gemini" | "rule_based"
-ERL_GEMINI_MODEL        = "gemini-1.5-flash"
+ERL_GEMINI_MODEL        = "gemini-2.0-flash"
 ERL_MAX_REFLECTION_TOKENS = 512
 ERL_SECOND_ATTEMPT_EPISODES = 5
 
