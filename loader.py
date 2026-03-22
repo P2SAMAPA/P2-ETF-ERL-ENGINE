@@ -34,14 +34,42 @@ def load_etf_prices() -> pd.DataFrame:
     df.index = pd.to_datetime(df.index)
     df   = df.sort_index()
 
+    # --- DEBUG: show raw parquet state before any filtering ---
+    print(f"[loader] Raw ETF parquet: {len(df)} rows, "
+          f"cols={list(df.columns)}, "
+          f"index dtype={df.index.dtype}")
+    if len(df) > 0:
+        print(f"[loader] Raw ETF index range: "
+              f"{df.index[0].date()} → {df.index[-1].date()}")
+
     # Keep only our assets, in order
     available = [a for a in cfg.ASSETS if a in df.columns]
     missing   = [a for a in cfg.ASSETS if a not in df.columns]
     if missing:
         raise ValueError(f"[loader] Missing assets in source data: {missing}")
 
+    if not available:
+        raise ValueError(f"[loader] None of the required assets found in parquet. "
+                         f"Parquet cols: {list(df.columns)}, "
+                         f"Required: {cfg.ASSETS}")
+
     df = df[available]
+    df_before_filter = len(df)
     df = df[df.index >= cfg.DATA_START].dropna(how='all')
+
+    print(f"[loader] After DATA_START filter ({cfg.DATA_START}): "
+          f"{df_before_filter} → {len(df)} rows")
+
+    # --- GUARD: catch empty DataFrame before index access ---
+    if df.empty:
+        raise ValueError(
+            f"[loader] ETF prices empty after filtering!\n"
+            f"  DATA_START = {cfg.DATA_START}\n"
+            f"  Check that the parquet date index is timezone-naive and "
+            f"matches DATA_START format.\n"
+            f"  Raw row count before filter: {df_before_filter}"
+        )
+
     print(f"[loader] ETF prices: {len(df)} days "
           f"({df.index[0].date()} → {df.index[-1].date()})")
     return df
@@ -53,6 +81,13 @@ def load_benchmark_prices() -> pd.Series:
     df.index = pd.to_datetime(df.index)
     df   = df.sort_index()
 
+    # --- DEBUG: show raw parquet state before any filtering ---
+    print(f"[loader] Raw benchmark parquet: {len(df)} rows, "
+          f"cols={list(df.columns)}")
+    if len(df) > 0:
+        print(f"[loader] Raw benchmark index range: "
+              f"{df.index[0].date()} → {df.index[-1].date()}")
+
     # Handle single-column or named column
     if cfg.BENCHMARK in df.columns:
         series = df[cfg.BENCHMARK]
@@ -60,7 +95,20 @@ def load_benchmark_prices() -> pd.Series:
         series = df.iloc[:, 0]
         series.name = cfg.BENCHMARK
 
+    series_before_filter = len(series)
     series = series[series.index >= cfg.DATA_START].dropna()
+
+    print(f"[loader] After DATA_START filter ({cfg.DATA_START}): "
+          f"{series_before_filter} → {len(series)} rows")
+
+    # --- GUARD: catch empty Series before index access ---
+    if series.empty:
+        raise ValueError(
+            f"[loader] Benchmark prices empty after filtering!\n"
+            f"  DATA_START = {cfg.DATA_START}\n"
+            f"  Raw row count before filter: {series_before_filter}"
+        )
+
     print(f"[loader] Benchmark ({cfg.BENCHMARK}): {len(series)} days "
           f"({series.index[0].date()} → {series.index[-1].date()})")
     return series
@@ -74,7 +122,18 @@ def load_etf_returns() -> pd.DataFrame:
     df   = df.sort_index()
     available = [a for a in cfg.ASSETS if a in df.columns]
     df   = df[available]
+    df_before_filter = len(df)
     df   = df[df.index >= cfg.DATA_START].dropna(how='all')
+
+    print(f"[loader] ETF returns: {df_before_filter} → {len(df)} days "
+          f"after DATA_START filter")
+
+    if df.empty:
+        raise ValueError(
+            f"[loader] ETF returns empty after filtering! "
+            f"DATA_START={cfg.DATA_START}, raw rows={df_before_filter}"
+        )
+
     print(f"[loader] ETF returns: {len(df)} days")
     return df
 
@@ -92,7 +151,18 @@ def load_benchmark_returns() -> pd.Series:
         series = df.iloc[:, 0]
         series.name = cfg.BENCHMARK
 
+    series_before_filter = len(series)
     series = series[series.index >= cfg.DATA_START].dropna()
+
+    print(f"[loader] Benchmark returns: {series_before_filter} → {len(series)} days "
+          f"after DATA_START filter")
+
+    if series.empty:
+        raise ValueError(
+            f"[loader] Benchmark returns empty after filtering! "
+            f"DATA_START={cfg.DATA_START}, raw rows={series_before_filter}"
+        )
+
     print(f"[loader] Benchmark returns: {len(series)} days")
     return series
 
@@ -108,7 +178,22 @@ def load_macro() -> pd.DataFrame:
     df   = pd.read_parquet(path)
     df.index = pd.to_datetime(df.index)
     df   = df.sort_index()
+
+    print(f"[loader] Raw macro parquet: {len(df)} rows, "
+          f"cols={list(df.columns)}")
+
+    df_before_filter = len(df)
     df   = df[df.index >= cfg.DATA_START].dropna(how='all')
+
+    print(f"[loader] After DATA_START filter: "
+          f"{df_before_filter} → {len(df)} rows")
+
+    if df.empty:
+        raise ValueError(
+            f"[loader] Macro features empty after filtering! "
+            f"DATA_START={cfg.DATA_START}, raw rows={df_before_filter}"
+        )
+
     print(f"[loader] Macro features: {len(df)} days, "
           f"cols={list(df.columns)}")
     return df
@@ -121,6 +206,16 @@ def align_all(etf_prices, benchmark, etf_returns, bench_returns):
               .intersection(etf_returns.index)
               .intersection(bench_returns.index))
     common = common.sort_values()
+
+    if len(common) == 0:
+        raise ValueError(
+            f"[loader] No common trading days found after alignment!\n"
+            f"  ETF prices index:      {etf_prices.index.min()} → {etf_prices.index.max()}\n"
+            f"  Benchmark index:       {benchmark.index.min()} → {benchmark.index.max()}\n"
+            f"  ETF returns index:     {etf_returns.index.min()} → {etf_returns.index.max()}\n"
+            f"  Bench returns index:   {bench_returns.index.min()} → {bench_returns.index.max()}\n"
+            f"  Hint: Check for timezone mismatch between parquet files."
+        )
 
     return (
         etf_prices.reindex(common),
