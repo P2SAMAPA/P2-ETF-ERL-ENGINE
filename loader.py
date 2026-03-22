@@ -28,11 +28,25 @@ def _download(filename):
     )
 
 
+def _fix_index(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ensure the DataFrame has a proper datetime index.
+    If 'Date' (or 'date') was accidentally saved as a column instead of
+    the index, promote it to the index here.
+    """
+    for col in ['Date', 'date', 'DATE']:
+        if col in df.columns:
+            df = df.set_index(col)
+            break
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index()
+    return df
+
+
 def load_etf_prices() -> pd.DataFrame:
     path = _download("data/etf_price.parquet")
     df   = pd.read_parquet(path)
-    df.index = pd.to_datetime(df.index)
-    df   = df.sort_index()
+    df   = _fix_index(df)
 
     # --- DEBUG: show raw parquet state before any filtering ---
     print(f"[loader] Raw ETF parquet: {len(df)} rows, "
@@ -78,8 +92,7 @@ def load_etf_prices() -> pd.DataFrame:
 def load_benchmark_prices() -> pd.Series:
     path = _download("data/bench_price.parquet")
     df   = pd.read_parquet(path)
-    df.index = pd.to_datetime(df.index)
-    df   = df.sort_index()
+    df   = _fix_index(df)
 
     # --- DEBUG: show raw parquet state before any filtering ---
     print(f"[loader] Raw benchmark parquet: {len(df)} rows, "
@@ -118,8 +131,8 @@ def load_etf_returns() -> pd.DataFrame:
     """Load pre-computed ETF daily returns."""
     path = _download("data/etf_ret.parquet")
     df   = pd.read_parquet(path)
-    df.index = pd.to_datetime(df.index)
-    df   = df.sort_index()
+    df   = _fix_index(df)
+
     available = [a for a in cfg.ASSETS if a in df.columns]
     df   = df[available]
     df_before_filter = len(df)
@@ -142,8 +155,7 @@ def load_benchmark_returns() -> pd.Series:
     """Load pre-computed benchmark daily returns."""
     path = _download("data/bench_ret.parquet")
     df   = pd.read_parquet(path)
-    df.index = pd.to_datetime(df.index)
-    df   = df.sort_index()
+    df   = _fix_index(df)
 
     if cfg.BENCHMARK in df.columns:
         series = df[cfg.BENCHMARK]
@@ -176,8 +188,7 @@ def load_macro() -> pd.DataFrame:
     """
     path = _download("data/macro.parquet")
     df   = pd.read_parquet(path)
-    df.index = pd.to_datetime(df.index)
-    df   = df.sort_index()
+    df   = _fix_index(df)
 
     print(f"[loader] Raw macro parquet: {len(df)} rows, "
           f"cols={list(df.columns)}")
