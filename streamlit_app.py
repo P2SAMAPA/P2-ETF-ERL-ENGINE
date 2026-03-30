@@ -15,7 +15,7 @@ import config as cfg
 
 st.set_page_config(page_title="REALM · P2 ETF Engine", page_icon="⬡", layout="wide")
 
-# ── CSS styling (unchanged, kept from original) ───────────────────────────────
+# ── CSS styling (unchanged) ───────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -454,7 +454,7 @@ def render_group_dashboard(group_assets, group_name, signal, history, perf,
                     yaxis=dict(visible=False),
                     legend=dict(orientation='h',y=1.5,font=dict(size=12)),
                 )
-                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar':False})
+                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar':False}, key=f"{group_name}_regime_timeline")
             else:
                 st.info("Regime history not available yet.")
 
@@ -508,12 +508,12 @@ def render_group_dashboard(group_assets, group_name, signal, history, perf,
         ec = chart_equity(history)
         if ec:
             st.markdown('<div class="sec-head">Equity Curve (Base 100)</div>',unsafe_allow_html=True)
-            st.plotly_chart(ec,use_container_width=True,config={'displayModeBar':False})
+            st.plotly_chart(ec, use_container_width=True, config={'displayModeBar':False}, key=f"{group_name}_equity")
 
         eb = chart_excess(history)
         if eb:
             st.markdown('<div class="sec-head">Daily Excess Return vs AGG — Last 30 Days</div>',unsafe_allow_html=True)
-            st.plotly_chart(eb,use_container_width=True,config={'displayModeBar':False})
+            st.plotly_chart(eb, use_container_width=True, config={'displayModeBar':False}, key=f"{group_name}_excess")
 
         if perf and not perf.get('insufficient_data'):
             rp = perf.get('regime_performance',{})
@@ -596,6 +596,7 @@ def render_group_dashboard(group_assets, group_name, signal, history, perf,
                     Stored: {stored}
                 </div>
             </div>""", unsafe_allow_html=True)
+
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 def main():
