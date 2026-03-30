@@ -21,14 +21,21 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as cfg
 
 
-# ── Prompt Templates ───────────────────────────────────────────────────────────
+# ── Prompt Templates (with dynamic asset lists) ───────────────────────────────
 
-SYSTEM_PROMPT = """You are an expert quantitative portfolio analyst specialising in 
-fixed-income and real-asset ETFs. You analyse failed trading episodes and generate 
+def _asset_list_str() -> str:
+    """Return a string listing all assets (including CASH) for prompts."""
+    return ", ".join(cfg.ALL_ASSETS)
+
+def _weight_adjustments_dict() -> str:
+    """Generate the JSON object for weight adjustments in the second attempt prompt."""
+    return "{\n" + "\n".join(f'    "{asset}": <-1.0 to 1.0>,' for asset in cfg.ALL_ASSETS) + "\n  }"
+
+SYSTEM_PROMPT = f"""You are an expert quantitative portfolio analyst specialising in 
+fixed-income, real-asset, and equity ETFs. You analyse failed trading episodes and generate 
 precise, actionable portfolio rules.
 
-You are managing a portfolio of 6 ETFs: TLT (long-duration Treasuries), LQD (investment 
-grade bonds), HYG (high yield bonds), VNQ (REITs), GLD (gold), SLV (silver), plus CASH.
+You are managing a portfolio of {len(cfg.ASSETS)} ETFs ({_asset_list_str()}), plus CASH.
 The benchmark is AGG (US Aggregate Bond Market).
 
 Your task: analyse why a portfolio allocation underperformed AGG and generate a specific 
@@ -73,30 +80,22 @@ Generate a corrective rule in this exact JSON format:
   "confidence": <0.0-1.0>
 }}"""
 
-SECOND_ATTEMPT_PROMPT_TEMPLATE = """You are managing an ETF portfolio in {regime_name} regime.
+SECOND_ATTEMPT_PROMPT_TEMPLATE = f"""You are managing an ETF portfolio in {{regime_name}} regime.
 
 ACTIVE RULES FOR THIS REGIME:
-{active_rules}
+{{active_rules}}
 
 CURRENT MARKET STATE:
-- Regime transition probability to crisis: {crisis_prob:.1%}
-- Regime entropy (uncertainty): {entropy:.3f}
-- Recent portfolio Sharpe: {sharpe:.3f}
-- Current weights: {current_weights}
+- Regime transition probability to crisis: {{crisis_prob:.1%}}
+- Regime entropy (uncertainty): {{entropy:.3f}}
+- Recent portfolio Sharpe: {{sharpe:.3f}}
+- Current weights: {{current_weights}}
 
 Based on the active rules and current market state, recommend portfolio weight 
 adjustments as a JSON object:
 {{
   "reasoning": "<brief explanation>",
-  "weight_adjustments": {{
-    "TLT": <-1.0 to 1.0>,
-    "LQD": <-1.0 to 1.0>,
-    "HYG": <-1.0 to 1.0>,
-    "VNQ": <-1.0 to 1.0>,
-    "GLD": <-1.0 to 1.0>,
-    "SLV": <-1.0 to 1.0>,
-    "CASH": <-1.0 to 1.0>
-  }},
+  "weight_adjustments": {_weight_adjustments_dict()},
   "conviction": <0.0-1.0>
 }}
 
@@ -220,12 +219,12 @@ class RuleBasedReflector:
 
         heuristic   = self._get_heuristic(regime_name)
 
-        # Find worst performing held asset
-        worst_asset = max(
-            allocation,
-            key=lambda a: allocation[a],
-            default='HYG'
-        ) if allocation else 'HYG'
+        # Find worst performing held asset (among those present in allocation)
+        held_assets = [a for a in cfg.ALL_ASSETS if allocation.get(a, 0) > 0.01]
+        if held_assets:
+            worst_asset = min(held_assets, key=lambda a: allocation.get(a, 0))
+        else:
+            worst_asset = 'HYG'
 
         primary   = heuristic['reduce'][0] if heuristic['reduce'] else worst_asset
         secondary = heuristic['increase'][0] if heuristic['increase'] else 'GLD'
@@ -264,10 +263,12 @@ class RuleBasedReflector:
 
         # Crisis override
         if crisis_prob > cfg.ENSEMBLE_CRISIS_THRESHOLD:
-            adjustments['HYG']  -= 0.15
-            adjustments['VNQ']  -= 0.10
-            adjustments['GLD']  += 0.15
-            adjustments['CASH'] += 0.10
+            for a in ['HYG', 'VNQ']:
+                if a in adjustments:
+                    adjustments[a] -= 0.15
+            for a in ['GLD', 'CASH']:
+                if a in adjustments:
+                    adjustments[a] += 0.15
 
         return {
             'reasoning':        'Rule-based adjustment from active rulebook',
