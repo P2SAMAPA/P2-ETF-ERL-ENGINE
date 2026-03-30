@@ -21,7 +21,7 @@ from hmm_train import RegimeDetector
 from ensemble import EnsemblePolicy
 from memory import Rulebook
 from kelly import format_allocation
-from classifier_train import INPUT_DIM, N_CLASSES, LOOKBACK, compute_momentum_features
+from classifier_train import INPUT_DIM, N_CLASSES, LOOKBACK, compute_momentum_features, _MOM_FEATS
 
 
 # ── Loader Helpers ─────────────────────────────────────────────────────────────
@@ -91,7 +91,6 @@ def append_and_trim(history, signal):
     return history[-cfg.MAX_HISTORY_RECORDS:]
 
 
-
 # ── Classifier Inference ───────────────────────────────────────────────────────
 
 def load_classifier():
@@ -117,17 +116,19 @@ def classifier_pick(clf_bundle, tft_embedding, hmm_probs_vec, macro_vec,
     """
     model, scaler = clf_bundle
     lb   = lookback_returns.flatten().astype(np.float32)
-    mom  = momentum_features if momentum_features is not None else np.zeros(54, np.float32)
+    # If momentum_features not provided, use zeros of correct length
+    if momentum_features is None:
+        momentum_features = np.zeros(_MOM_FEATS, dtype=np.float32)
     feat = np.concatenate([
         tft_embedding.astype(np.float32),
         hmm_probs_vec.astype(np.float32),
         macro_vec.astype(np.float32),
         lb,
-        mom,
+        momentum_features,
     ]).reshape(1, -1)
 
     feat_scaled = scaler.transform(feat)
-    probs       = model.predict_proba(feat_scaled)[0]   # shape (6,)
+    probs       = model.predict_proba(feat_scaled)[0]   # shape (N_CLASSES,)
 
     best_idx   = int(np.argmax(probs))
     conviction = float(probs[best_idx])
@@ -167,8 +168,6 @@ def pick_etf(ensemble_output, regime_output, active_rules):
     best_idx    = int(np.argmax(nudged))
     conviction  = float(nudged[best_idx])
     pick        = assets[best_idx]
-
-    # Low conviction — still pick best ETF, just report low conviction
 
     reason = f'{pick} has highest ensemble weight ({conviction:.0%})'
     if active_rules:
@@ -214,7 +213,7 @@ def build_signal(today_str, regime_output, ensemble_output,
         },
         # ── Ensemble internals (kept for diagnostics) ──
         'raw_weights':       {a: round(float(w), 4)
-                              for a, w in zip(cfg.ASSETS, ensemble_output['final_weights'][:len(cfg.ASSETS)])},
+                              for a, w in zip(cfg.ALL_ASSETS, ensemble_output['final_weights'])},
         'gate_A':            ensemble_output['gates']['A'],
         'gate_B':            ensemble_output['gates']['B'],
         'gate_C':            ensemble_output['gates']['C'],
@@ -274,7 +273,7 @@ def main():
     active_rules = rulebook.get_rules_for_regime(regime_output['regime'])
     print(f"[predict] Active rules: {len(active_rules)}")
 
-    # 6. State vector (80-dim)
+    # 6. State vector (92-dim)
     hmm_probs = regime_output['probs']
     state = np.concatenate([
         tft_embedding,
@@ -282,7 +281,7 @@ def main():
         current_weights,
         np.array([rolling_sharpe], dtype=np.float32),
     ]).astype(np.float32)
-    assert state.shape[0] == cfg.DDPG_STATE_DIM
+    assert state.shape[0] == cfg.DDPG_STATE_DIM, f"State dim mismatch: {state.shape[0]} vs {cfg.DDPG_STATE_DIM}"
 
     # 7a. Try classifier first (Option B)
     clf = load_classifier()
