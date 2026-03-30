@@ -1,6 +1,8 @@
-# streamlit_app.py — REALM Dashboard
+# streamlit_app.py — REALM Dashboard (Updated: two main tabs for FI / Equity)
 
-import os, sys, json
+import os
+import sys
+import json
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -13,6 +15,7 @@ import config as cfg
 
 st.set_page_config(page_title="REALM · P2 ETF Engine", page_icon="⬡", layout="wide")
 
+# ── CSS styling (unchanged, kept from original) ───────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -147,7 +150,19 @@ div[data-testid="stTabs"] button[aria-selected="true"] {
 </style>
 """, unsafe_allow_html=True)
 
-# ── Data loaders ───────────────────────────────────────────────────────────────
+# ── Extended asset colors for equities ─────────────────────────────────────────
+ASSET_COLORS = {
+    # FI
+    'TLT': '#1d4ed8', 'LQD': '#7c3aed', 'HYG': '#b45309',
+    'VNQ': '#0e7490', 'GLD': '#ca8a04', 'SLV': '#6b7280',
+    # Equity
+    'QQQ': '#00a1c9', 'XLK': '#2c7da0', 'XLF': '#2e8b57', 'XLE': '#cd5c5c',
+    'XLV': '#e67e22', 'XLI': '#3498db', 'XLY': '#e74c3c', 'XLP': '#2ecc71',
+    'XLU': '#f1c40f', 'XME': '#95a5a6', 'GDX': '#d35400', 'IWM': '#9b59b6',
+    'CASH': '#d1d5db',
+}
+
+# ── Data loaders (unchanged) ───────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_signal():
     try:
@@ -188,12 +203,7 @@ def load_regime_hist():
         return pd.read_csv(p, parse_dates=['date'])
     except: return None
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
-ASSET_COLORS = {
-    'TLT':'#1d4ed8','LQD':'#7c3aed','HYG':'#b45309',
-    'VNQ':'#0e7490','GLD':'#ca8a04','SLV':'#6b7280','CASH':'#d1d5db',
-}
-
+# ── Helpers (unchanged) ────────────────────────────────────────────────────────
 def regime_pill(name):
     n = (name or '').lower()
     if any(k in n for k in ['crisis','stress','risk off']): cls='pill-red'
@@ -251,53 +261,59 @@ def chart_excess(history):
         showlegend=False)
     return fig
 
-# ── Main ───────────────────────────────────────────────────────────────────────
-def main():
-    signal        = load_signal()
-    history       = load_history()
-    perf          = load_perf()
-    rulebook_data = load_rulebook()
-    regime_hist   = load_regime_hist()
-
-    # ── Header ────────────────────────────────────────────────────────────────
-    now = datetime.utcnow().strftime('%Y-%m-%d  %H:%M UTC')
-    c_title, c_time = st.columns([3,1])
-    with c_title:
-        st.markdown("""
-        <div style="margin-bottom:8px">
-            <span style="font-size:32px;font-weight:800;color:#111111;letter-spacing:-0.02em">REALM</span>
-            <span style="font-size:15px;font-weight:600;color:#888888;margin-left:16px;letter-spacing:0.06em">P2 ETF ERL ENGINE</span>
-        </div>
-        <div style="font-size:15px;color:#555555;font-weight:400">
-            Regime-Aware Experiential Asset Learning Machine
-        </div>
-        """, unsafe_allow_html=True)
-    with c_time:
-        st.markdown(f"""
-        <div style="text-align:right;margin-top:10px;font-size:13px;
-                    font-weight:500;color:#888888">{now}</div>
-        """, unsafe_allow_html=True)
-
-    st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
-
+# ── Helper to render dashboard for a specific asset group ──────────────────────
+def render_group_dashboard(group_assets, group_name, signal, history, perf,
+                           rulebook_data, regime_hist, now_str):
+    """
+    Renders the full dashboard (Signal, Regime, Performance, Rulebook tabs)
+    filtered to the given group_assets list. The top pick is the asset in the
+    group with highest classifier probability (or highest raw weight if no
+    classifier). Conviction is the probability of that top pick.
+    """
     if not signal:
         st.error("No signal available yet.")
         return
 
+    # Extract group-specific probabilities/weights
+    clf_probs = signal.get('classifier_probs', {})
+    raw_w     = signal.get('raw_weights', {})
+    prob_dict = clf_probs if clf_probs else raw_w
+    # Filter to group assets
+    group_probs = {k: v for k, v in prob_dict.items() if k in group_assets}
+    # Include CASH? No, we treat CASH separately (not in group)
+    if not group_probs:
+        st.warning(f"No probabilities available for {group_name} assets.")
+        return
+
+    # Determine top pick within group
+    top_asset = max(group_probs.items(), key=lambda x: x[1])[0]
+    conv = group_probs[top_asset]
+
+    # Build a copy of signal with group-specific fields
+    group_signal = signal.copy()
+    group_signal['pick'] = top_asset
+    group_signal['conviction'] = conv
+    group_signal['classifier_probs'] = group_probs
+    group_signal['raw_weights'] = {k: v for k, v in raw_w.items() if k in group_assets} if raw_w else {}
+
+    # Now render the same structure as original but with group_signal
+    # We'll reuse the original UI code, but using group_signal.
+
+    # ── Header already shown outside tabs ──────────────────────────────────────
+
+    # Create tabs inside group (Signal, Regime, Performance, Rulebook)
     tab1, tab2, tab3, tab4 = st.tabs(["  Signal  ", "  Regime  ", "  Performance  ", "  Rulebook  "])
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # SIGNAL
-    # ══════════════════════════════════════════════════════════════════════════
+    # SIGNAL TAB
     with tab1:
-        pick       = signal.get('pick', 'CASH')
-        conviction = signal.get('conviction', 0) or 0
-        rationale  = signal.get('rationale', '—')
-        rname      = signal.get('regime_name','Unknown')
-        cp         = signal.get('crisis_prob') or 0
-        rs         = signal.get('rolling_sharpe') or 0
-        sig_date   = signal.get('date', '—')
-        pick_source= signal.get('pick_source', 'DDPG_ARGMAX')
+        pick       = group_signal.get('pick', 'CASH')
+        conviction = group_signal.get('conviction', 0) or 0
+        rationale  = group_signal.get('rationale', '—')
+        rname      = group_signal.get('regime_name','Unknown')
+        cp         = group_signal.get('crisis_prob') or 0
+        rs         = group_signal.get('rolling_sharpe') or 0
+        sig_date   = group_signal.get('date', '—')
+        pick_source= group_signal.get('pick_source', 'DDPG_ARGMAX')
         src_label  = '🧠 AI Classifier' if pick_source == 'CLASSIFIER' else '⚙️ DDPG Ensemble'
         if np.isnan(cp): cp=0
         if np.isnan(rs): rs=0
@@ -314,7 +330,7 @@ def main():
                     align-items:center;gap:40px;">
             <div style="min-width:160px;text-align:center;">
                 <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;
-                            color:#6b7280;margin-bottom:8px">TODAY'S PICK</div>
+                            color:#6b7280;margin-bottom:8px">{group_name.upper()} PICK</div>
                 <div style="font-size:72px;font-weight:900;letter-spacing:-2px;
                             color:{pick_color};line-height:1">{pick}</div>
                 <div style="font-size:13px;color:#6b7280;margin-top:6px">{sig_date}</div>
@@ -352,11 +368,8 @@ def main():
         cl, cr = st.columns([1.3, 1])
 
         with cl:
-            clf_probs = signal.get('classifier_probs', {})
-            raw_w     = signal.get('raw_weights', {})
-            # Show classifier probs if available, else DDPG weights
-            display_w   = clf_probs if clf_probs else raw_w
-            sec_title   = 'Classifier Probabilities' if clf_probs else 'Ensemble Weights'
+            display_w = group_signal.get('classifier_probs', group_signal.get('raw_weights', {}))
+            sec_title = 'Classifier Probabilities' if clf_probs else 'Ensemble Weights'
             st.markdown(f'<div class="sec-head">{sec_title}</div>', unsafe_allow_html=True)
             if display_w:
                 rows = ''
@@ -367,12 +380,12 @@ def main():
                     outline = f'outline:2px solid {color};outline-offset:2px;border-radius:6px;' if is_pick else ''
                     rows += f'<div class="alloc-row" style="{outline}padding:2px 6px;margin-bottom:2px"><span class="alloc-ticker" style="{bold}">{asset}</span><div class="alloc-bg"><div class="alloc-fill" style="width:{w*100:.1f}%;background:{color}"></div></div><span class="alloc-pct" style="{bold}">{w*100:.1f}%</span></div>'
                 st.markdown(rows, unsafe_allow_html=True)
-            st.markdown(f'<div style="font-size:13px;color:#888888;margin-top:14px;font-weight:500">Rolling Sharpe: {rs:.2f} &nbsp;·&nbsp; Active Rules: {signal.get("n_active_rules",0)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:13px;color:#888888;margin-top:14px;font-weight:500">Rolling Sharpe: {rs:.2f} &nbsp;·&nbsp; Active Rules: {group_signal.get("n_active_rules",0)}</div>', unsafe_allow_html=True)
 
         with cr:
-            gA = signal.get('gate_A',0) or 0
-            gB = signal.get('gate_B',0) or 0
-            gC = signal.get('gate_C',0) or 0
+            gA = group_signal.get('gate_A',0) or 0
+            gB = group_signal.get('gate_B',0) or 0
+            gC = group_signal.get('gate_C',0) or 0
             st.markdown(f"""
             <div class="sec-head">Ensemble Gates</div>
             <div class="gate-row">
@@ -390,7 +403,7 @@ def main():
                 </div>
             </div>""", unsafe_allow_html=True)
 
-            rules = list(dict.fromkeys(signal.get('active_rule_summary', [])))  # deduplicate
+            rules = list(dict.fromkeys(group_signal.get('active_rule_summary', [])))  # deduplicate
             if rules:
                 st.markdown('<div class="sec-head" style="margin-top:24px">Active Rules</div>',
                             unsafe_allow_html=True)
@@ -399,14 +412,12 @@ def main():
                         <div class="rule-body">{r}</div>
                     </div>""", unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # REGIME
-    # ══════════════════════════════════════════════════════════════════════════
+    # REGIME TAB (unchanged – regime is global)
     with tab2:
         c1, c2 = st.columns([1, 1.8])
         with c1:
             st.markdown('<div class="sec-head">Regime Probabilities</div>', unsafe_allow_html=True)
-            hmm = signal.get('hmm_probs', {})
+            hmm = group_signal.get('hmm_probs', {})
             for k in range(cfg.HMM_N_STATES):
                 p  = float(hmm.get(str(k), 0))
                 nm = cfg.REGIME_NAMES.get(k, f'Regime {k}')
@@ -449,7 +460,7 @@ def main():
 
             st.markdown('<div class="sec-head" style="margin-top:24px">Transition Entropy</div>',
                         unsafe_allow_html=True)
-            ent   = signal.get('transition_entropy',0) or 0
+            ent   = group_signal.get('transition_entropy',0) or 0
             max_e = np.log(cfg.HMM_N_STATES)
             e_pct = ent/max_e if max_e>0 else 0
             ec    = 'red' if e_pct>0.7 else 'amber' if e_pct>0.4 else 'green'
@@ -462,9 +473,7 @@ def main():
                 </div>
             </div>""", unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # PERFORMANCE
-    # ══════════════════════════════════════════════════════════════════════════
+    # PERFORMANCE TAB (unchanged – overall strategy performance)
     with tab3:
         scored_days  = [s for s in history if s.get('scored')]
         n_scored     = len(scored_days)
@@ -517,9 +526,7 @@ def main():
                 st.dataframe(pd.DataFrame(rows).sort_values('Days',ascending=False),
                              hide_index=True,use_container_width=True)
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # RULEBOOK
-    # ══════════════════════════════════════════════════════════════════════════
+    # RULEBOOK TAB (unchanged)
     with tab4:
         if not rulebook_data:
             st.info("No rulebook yet.")
@@ -589,6 +596,51 @@ def main():
                     Stored: {stored}
                 </div>
             </div>""", unsafe_allow_html=True)
+
+# ── Main ───────────────────────────────────────────────────────────────────────
+def main():
+    signal        = load_signal()
+    history       = load_history()
+    perf          = load_perf()
+    rulebook_data = load_rulebook()
+    regime_hist   = load_regime_hist()
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    now = datetime.utcnow().strftime('%Y-%m-%d  %H:%M UTC')
+    c_title, c_time = st.columns([3,1])
+    with c_title:
+        st.markdown("""
+        <div style="margin-bottom:8px">
+            <span style="font-size:32px;font-weight:800;color:#111111;letter-spacing:-0.02em">REALM</span>
+            <span style="font-size:15px;font-weight:600;color:#888888;margin-left:16px;letter-spacing:0.06em">P2 ETF ERL ENGINE</span>
+        </div>
+        <div style="font-size:15px;color:#555555;font-weight:400">
+            Regime-Aware Experiential Asset Learning Machine
+        </div>
+        """, unsafe_allow_html=True)
+    with c_time:
+        st.markdown(f"""
+        <div style="text-align:right;margin-top:10px;font-size:13px;
+                    font-weight:500;color:#888888">{now}</div>
+        """, unsafe_allow_html=True)
+
+    st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+
+    if not signal:
+        st.error("No signal available yet.")
+        return
+
+    # ── Two main tabs: Fixed Income and Equity ────────────────────────────────
+    main_tabs = st.tabs(["🏛️ Fixed Income ETFs", "⚡ Equity ETFs"])
+
+    with main_tabs[0]:
+        render_group_dashboard(cfg.FI_ETFS, "Fixed Income", signal, history,
+                               perf, rulebook_data, regime_hist, now)
+
+    with main_tabs[1]:
+        render_group_dashboard(cfg.EQUITY_ETFS, "Equity", signal, history,
+                               perf, rulebook_data, regime_hist, now)
+
 
 if __name__ == "__main__":
     main()
