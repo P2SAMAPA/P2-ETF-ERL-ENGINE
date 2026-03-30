@@ -296,11 +296,6 @@ def render_group_dashboard(group_assets, group_name, signal, history, perf,
     group_signal['classifier_probs'] = group_probs
     group_signal['raw_weights'] = {k: v for k, v in raw_w.items() if k in group_assets} if raw_w else {}
 
-    # Now render the same structure as original but with group_signal
-    # We'll reuse the original UI code, but using group_signal.
-
-    # ── Header already shown outside tabs ──────────────────────────────────────
-
     # Create tabs inside group (Signal, Regime, Performance, Rulebook)
     tab1, tab2, tab3, tab4 = st.tabs(["  Signal  ", "  Regime  ", "  Performance  ", "  Rulebook  "])
 
@@ -526,7 +521,7 @@ def render_group_dashboard(group_assets, group_name, signal, history, perf,
                 st.dataframe(pd.DataFrame(rows).sort_values('Days',ascending=False),
                              hide_index=True,use_container_width=True)
 
-    # RULEBOOK TAB (unchanged)
+    # RULEBOOK TAB
     with tab4:
         if not rulebook_data:
             st.info("No rulebook yet.")
@@ -562,7 +557,12 @@ def render_group_dashboard(group_assets, group_name, signal, history, perf,
             </div>""", unsafe_allow_html=True)
 
         all_regimes = sorted(set(r.get('regime_name','Unknown') for r in rules))
-        sel = st.selectbox("Filter by regime", ['All']+all_regimes, label_visibility='collapsed')
+        sel = st.selectbox(
+            "Filter by regime",
+            ['All'] + all_regimes,
+            label_visibility='collapsed',
+            key=f"{group_name}_rulebook_filter"   # <-- unique key added
+        )
         filtered = rules if sel=='All' else [r for r in rules if r.get('regime_name')==sel]
         filtered = sorted(filtered, key=lambda r: -r.get('confidence',0))
 
