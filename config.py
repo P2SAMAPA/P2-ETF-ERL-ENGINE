@@ -18,10 +18,21 @@ HF_TOKEN        = os.environ.get("HF_TOKEN",        None)
 GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY",  None)
 
 # ── Asset Universe ─────────────────────────────────────────────────────────────
-ASSETS          = ['TLT', 'LQD', 'HYG', 'VNQ', 'GLD', 'SLV']
+# Fixed income ETFs (original set)
+FI_ETFS = ['TLT', 'LQD', 'HYG', 'VNQ', 'GLD', 'SLV']
+
+# Equity ETFs (new module)
+EQUITY_ETFS = [
+    "QQQ", "XLK", "XLF", "XLE", "XLV", "XLI",
+    "XLY", "XLP", "XLU", "XME", "GDX", "IWM"
+]
+
+# Combined list used by the pipeline
+ASSETS = FI_ETFS + EQUITY_ETFS
+
 CASH            = 'CASH'
-ALL_ASSETS      = ASSETS + [CASH]                # 7 total
-N_ASSETS        = len(ALL_ASSETS)                # 7
+ALL_ASSETS      = ASSETS + [CASH]                # 6 FI + 12 Equity + CASH = 19 total
+N_ASSETS        = len(ALL_ASSETS)                # 19
 BENCHMARK       = 'AGG'
 
 # ── Data ───────────────────────────────────────────────────────────────────────
@@ -98,8 +109,8 @@ TFT_EARLY_STOP_PAT      = 5
 
 # ── DDPG ───────────────────────────────────────────────────────────────────────
 # State: TFT embedding (64) + HMM probs (8) + weights (7) + rolling sharpe (1)
-DDPG_STATE_DIM          = TFT_EMBEDDING_DIM + HMM_N_STATES + N_ASSETS + 1  # 80
-DDPG_ACTION_DIM         = N_ASSETS           # 7
+DDPG_STATE_DIM          = TFT_EMBEDDING_DIM + HMM_N_STATES + N_ASSETS + 1  # 64+8+19+1=92
+DDPG_ACTION_DIM         = N_ASSETS           # 19
 DDPG_ACTOR_HIDDEN       = [256, 128]
 DDPG_CRITIC_HIDDEN      = [256, 128]
 DDPG_LR_ACTOR           = 1e-4
