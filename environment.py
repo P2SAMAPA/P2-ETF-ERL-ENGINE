@@ -101,9 +101,9 @@ class PortfolioEnv:
     """
     Portfolio simulation environment for DDPG training.
 
-    State:  80-dim vector = TFT embedding (64) + HMM probs (8)
-                          + current weights (7) + rolling Sharpe (1)
-    Action: 7-dim softmax weights over [TLT, LQD, HYG, VNQ, GLD, SLV, CASH]
+    State:  92-dim vector = TFT embedding (64) + HMM probs (8)
+                          + current weights (19) + rolling Sharpe (1)
+    Action: 19-dim softmax weights over [18 ETFs + CASH]
     Reward: log return vs benchmark - transaction cost
 
     Episode: one full trading period (e.g. one year of daily steps)
@@ -113,7 +113,7 @@ class PortfolioEnv:
         self,
         embeddings:      pd.DataFrame,    # TFT embeddings (T, 64)
         hmm_probs:       pd.DataFrame,    # HMM probabilities (T, 8)
-        asset_returns:   pd.DataFrame,    # ETF daily returns (T, 6)
+        asset_returns:   pd.DataFrame,    # ETF daily returns (T, N_ASSETS-1)  (excluding CASH)
         bench_returns:   pd.Series,       # AGG daily returns (T,)
         initial_capital: float = cfg.INITIAL_CAPITAL,
     ):
@@ -150,13 +150,13 @@ class PortfolioEnv:
 
     def _get_state(self) -> np.ndarray:
         """
-        Assemble 80-dim state vector for current timestep.
+        Assemble 92-dim state vector for current timestep.
         """
         t = min(self.t, self.T - 1)
 
         embedding       = self.embeddings[t]          # (64,)
         hmm_p           = self.hmm_probs[t]           # (8,)
-        current_weights = self.weights                # (7,)
+        current_weights = self.weights                # (N_ASSETS,)
         sharpe          = self._rolling_sharpe()      # scalar
 
         state = np.concatenate([
@@ -187,7 +187,7 @@ class PortfolioEnv:
 
         Returns
         -------
-        next_state : np.ndarray (80,)
+        next_state : np.ndarray (92,)
         reward     : float
         done       : bool
         info       : dict
@@ -204,9 +204,9 @@ class PortfolioEnv:
 
         # ── Compute portfolio return for this step ─────────────────────────
         # CASH earns 0 (conservative — no risk-free rate)
-        etf_ret  = self.asset_returns[self.t]               # (6,)
+        etf_ret  = self.asset_returns[self.t]               # (N_ASSETS-1,)
         cash_ret = np.array([0.0], dtype=np.float32)
-        all_ret  = np.concatenate([etf_ret, cash_ret])      # (7,)
+        all_ret  = np.concatenate([etf_ret, cash_ret])      # (N_ASSETS,)
 
         port_ret  = float(np.dot(weights, all_ret))
         net_ret   = port_ret - tx_cost
@@ -421,6 +421,7 @@ if __name__ == "__main__":
         index=dates,
         columns=list(range(cfg.HMM_N_STATES))
     )
+    # asset_returns has columns for all ETFs (excluding CASH)
     asset_returns = pd.DataFrame(
         np.random.randn(T, len(cfg.ASSETS)) * 0.01,
         index=dates,
