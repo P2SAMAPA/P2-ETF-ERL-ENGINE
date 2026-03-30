@@ -108,7 +108,7 @@ TFT_LR                  = 1e-3
 TFT_EARLY_STOP_PAT      = 5
 
 # ── DDPG ───────────────────────────────────────────────────────────────────────
-# State: TFT embedding (64) + HMM probs (8) + weights (7) + rolling sharpe (1)
+# State: TFT embedding (64) + HMM probs (8) + weights (19) + rolling sharpe (1)
 DDPG_STATE_DIM          = TFT_EMBEDDING_DIM + HMM_N_STATES + N_ASSETS + 1  # 64+8+19+1=92
 DDPG_ACTION_DIM         = N_ASSETS           # 19
 DDPG_ACTOR_HIDDEN       = [256, 128]
