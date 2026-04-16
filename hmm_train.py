@@ -260,6 +260,15 @@ def compute_regime_stats(
         Index = regime names
         Columns = assets + ['count', 'pct_time']
     """
+    # FIX: Align returns index with labels index (only common dates)
+    common_idx = labels.index.intersection(returns.index)
+    if len(common_idx) != len(labels.index):
+        print(f"[Stats] Aligning: labels {len(labels.index)} days, "
+              f"returns {len(returns.index)} days → "
+              f"keeping {len(common_idx)} common days")
+        labels = labels.loc[common_idx]
+        returns = returns.loc[common_idx]
+
     daily_ret = returns  # returns are already daily returns
 
     stats_rows = []
