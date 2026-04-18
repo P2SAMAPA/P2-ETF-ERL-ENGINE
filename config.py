@@ -19,7 +19,7 @@ GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY",  None)
 
 # ── Asset Universe ─────────────────────────────────────────────────────────────
 # Fixed income ETFs (original set)
-FI_ETFS = ['TLT', 'LQD', 'HYG', 'VNQ', 'GLD', 'MBB', 'PFF', 'SLV']
+FI_ETFS = ['TLT', 'LQD', 'HYG', 'VNQ', 'GLD', 'SLV']
 
 # Equity ETFs (new module)
 EQUITY_ETFS = [
