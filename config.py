@@ -19,20 +19,20 @@ GEMINI_API_KEY  = os.environ.get("GEMINI_API_KEY",  None)
 
 # ── Asset Universe ─────────────────────────────────────────────────────────────
 # Fixed income ETFs (original set)
-FI_ETFS = ['TLT', 'LQD', 'HYG', 'VNQ', 'GLD', 'SLV']
+FI_ETFS = ['TLT', 'LQD', 'HYG', 'VNQ', 'GLD', 'MBB', 'PFF', 'SLV']
 
 # Equity ETFs (new module)
 EQUITY_ETFS = [
     "QQQ", "XLK", "XLF", "XLE", "XLV", "XLI",
-    "XLY", "XLP", "XLU", "XME", "GDX", "IWM"
+    "XLY", "XLP", "XLU", "XME", "IWF", "XSD", "XBI", "GDX", "IWM"
 ]
 
 # Combined list used by the pipeline
 ASSETS = FI_ETFS + EQUITY_ETFS
 
 CASH            = 'CASH'
-ALL_ASSETS      = ASSETS + [CASH]                # 6 FI + 12 Equity + CASH = 19 total
-N_ASSETS        = len(ALL_ASSETS)                # 19
+ALL_ASSETS      = ASSETS + [CASH]                # 8 FI + 15 Equity + CASH = 24 total
+N_ASSETS        = len(ALL_ASSETS)                # 24
 BENCHMARK       = 'AGG'
 
 # ── Data ───────────────────────────────────────────────────────────────────────
